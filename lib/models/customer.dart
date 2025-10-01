@@ -65,7 +65,7 @@ class Customer {
 
       // Check for additional mobile fields (mobile1, mobile2, etc.)
       for (int i = 1; i <= 3; i++) {
-        final mobile = _getString(['mobile$i', 'phone$i', 'contact$i']);
+        final mobile = _getString(['mobile$i', 'phone$i', 'contact$i', 'mobileno$i']);
         if (mobile.isNotEmpty && !numbers.contains(mobile)) {
           numbers.add(mobile);
         }
@@ -154,19 +154,64 @@ class Transaction {
   });
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
+    // Helper function to safely get string values from different possible keys
+    String getString(List<String> keys, [String defaultValue = '']) {
+      for (final key in keys) {
+        if (json.containsKey(key) && json[key] != null) {
+          return json[key].toString();
+        }
+      }
+      return defaultValue;
+    }
+
+    // Helper function to safely get double values
+    double getDouble(List<String> keys, [double defaultValue = 0.0]) {
+      for (final key in keys) {
+        if (json.containsKey(key) && json[key] != null) {
+          return double.tryParse(json[key].toString()) ?? defaultValue;
+        }
+      }
+      return defaultValue;
+    }
+
+    // Helper function to parse date from various formats
+    DateTime parseDate(List<String> keys) {
+      for (final key in keys) {
+        if (json.containsKey(key) && json[key] != null) {
+          try {
+            final dateStr = json[key].toString();
+            // Try different date formats
+            if (dateStr.contains('-')) {
+              return DateTime.parse(dateStr);
+            } else if (dateStr.contains('/')) {
+              // Handle DD/MM/YYYY format
+              final parts = dateStr.split('/');
+              if (parts.length == 3) {
+                return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+              }
+            }
+          } catch (e) {
+            // Continue to next key if parsing fails
+            continue;
+          }
+        }
+      }
+      return DateTime.now(); // Fallback to current date
+    }
+
     return Transaction(
-      id: json['id'] ?? '',
-      customerId: json['customerId'] ?? '',
-      invoiceNo: json['invoiceNo'] ?? '',
-      date: DateTime.parse(json['date']),
+      id: getString(['id', 'transaction_id', 'txn_id', 'invoiceid']),
+      customerId: getString(['customerId', 'customer_id', 'custid', 'customeraccountid']),
+      invoiceNo: getString(['invoiceNo', 'invoice_no', 'invoiceno', 'invoice', 'billno']),
+      date: parseDate(['date', 'invoice_date', 'txn_date', 'pur_date', 'bill_date']),
       type: TransactionType.values.firstWhere(
-        (e) => e.toString().split('.').last == json['type'],
+        (e) => e.toString().split('.').last.toLowerCase() == getString(['type', 'txn_type', 'transaction_type']).toLowerCase(),
         orElse: () => TransactionType.sales,
       ),
-      creditAmount: (json['creditAmount'] ?? 0).toDouble(),
-      receiptAmount: (json['receiptAmount'] ?? 0).toDouble(),
-      balanceAmount: (json['balanceAmount'] ?? 0).toDouble(),
-      remarks: json['remarks'],
+      creditAmount: getDouble(['creditAmount', 'credit_amount', 'credit', 'debit', 'amount', 'totalamt']),
+      receiptAmount: getDouble(['receiptAmount', 'receipt_amount', 'receipt', 'payment', 'incout', 'incinit']),
+      balanceAmount: getDouble(['balanceAmount', 'balance_amount', 'balance', 'outstanding', 'currbalance']),
+      remarks: getString(['remarks', 'remark', 'description', 'narration', 'msg']),
     );
   }
 

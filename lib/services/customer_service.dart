@@ -377,16 +377,47 @@ class CustomerService {
 
       final jsonData = jsonDecode(response.body);
 
-      // Handle different response formats
-      List<dynamic> transactionsList;
-      if (jsonData is List) {
+      if (kDebugMode) {
+        debugPrint('Customer Statement JSON structure: ${jsonData.runtimeType}');
+        if (jsonData is Map) {
+          debugPrint('JSON keys: ${jsonData.keys.toList()}');
+        }
+      }
+
+      // Handle the actual API response format based on Postman screenshots
+      List<dynamic> transactionsList = [];
+
+      if (jsonData is Map) {
+        // Check if response has flag and msg fields (as shown in Postman)
+        final flag = jsonData['flag'] ?? false;
+        final msg = jsonData['msg'] ?? '';
+
+        if (kDebugMode) {
+          debugPrint('API flag: $flag, msg: $msg');
+        }
+
+        if (jsonData.containsKey('statement') && jsonData['statement'] is List) {
+          transactionsList = jsonData['statement'] as List;
+        } else if (jsonData.containsKey('data') && jsonData['data'] is List) {
+          transactionsList = jsonData['data'] as List;
+        } else if (jsonData.containsKey('transactions') && jsonData['transactions'] is List) {
+          transactionsList = jsonData['transactions'] as List;
+        } else if (!flag && msg.toLowerCase().contains('no data')) {
+          // API returned no data - return empty list
+          if (kDebugMode) {
+            debugPrint('API returned no data: $msg');
+          }
+          return [];
+        }
+      } else if (jsonData is List) {
         transactionsList = jsonData;
-      } else if (jsonData is Map && jsonData.containsKey('transactions')) {
-        transactionsList = jsonData['transactions'] as List;
-      } else if (jsonData is Map && jsonData.containsKey('data')) {
-        transactionsList = jsonData['data'] as List;
-      } else {
-        throw Exception('Unexpected API response format');
+      }
+
+      if (transactionsList.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('No transactions found in API response');
+        }
+        return [];
       }
 
       final transactions = transactionsList.map((json) => Transaction.fromJson(json as Map<String, dynamic>)).toList();
@@ -457,16 +488,47 @@ class CustomerService {
 
       final jsonData = jsonDecode(response.body);
 
-      // Handle different response formats
-      List<dynamic> transactionsList;
-      if (jsonData is List) {
+      if (kDebugMode) {
+        debugPrint('Credit Age Report JSON structure: ${jsonData.runtimeType}');
+        if (jsonData is Map) {
+          debugPrint('JSON keys: ${jsonData.keys.toList()}');
+        }
+      }
+
+      // Handle the actual API response format based on Postman screenshots
+      List<dynamic> transactionsList = [];
+
+      if (jsonData is Map) {
+        // Check if response has flag and msg fields (as shown in Postman)
+        final flag = jsonData['flag'] ?? false;
+        final msg = jsonData['msg'] ?? '';
+
+        if (kDebugMode) {
+          debugPrint('API flag: $flag, msg: $msg');
+        }
+
+        if (jsonData.containsKey('creditage') && jsonData['creditage'] is List) {
+          transactionsList = jsonData['creditage'] as List;
+        } else if (jsonData.containsKey('data') && jsonData['data'] is List) {
+          transactionsList = jsonData['data'] as List;
+        } else if (jsonData.containsKey('transactions') && jsonData['transactions'] is List) {
+          transactionsList = jsonData['transactions'] as List;
+        } else if (!flag && msg.toLowerCase().contains('no data')) {
+          // API returned no data - return empty list
+          if (kDebugMode) {
+            debugPrint('API returned no data: $msg');
+          }
+          return [];
+        }
+      } else if (jsonData is List) {
         transactionsList = jsonData;
-      } else if (jsonData is Map && jsonData.containsKey('transactions')) {
-        transactionsList = jsonData['transactions'] as List;
-      } else if (jsonData is Map && jsonData.containsKey('data')) {
-        transactionsList = jsonData['data'] as List;
-      } else {
-        throw Exception('Unexpected API response format');
+      }
+
+      if (transactionsList.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('No credit age transactions found in API response');
+        }
+        return [];
       }
 
       final transactions = transactionsList.map((json) => Transaction.fromJson(json as Map<String, dynamic>)).toList();

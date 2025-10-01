@@ -93,12 +93,29 @@ class _CustomersPageState extends State<CustomersPage> {
     }
 
     if (customer.mobileNumbers.length == 1) {
-      final url = Uri.parse('tel:${customer.mobileNumbers.first}');
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url);
-      }
+      await _launchPhoneCall(customer.mobileNumbers.first);
     } else {
       _showMobileNumberDialog(customer);
+    }
+  }
+
+  Future<void> _launchPhoneCall(String phoneNumber) async {
+    try {
+      // Clean the phone number - remove any non-digit characters except +
+      final cleanNumber = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
+      final url = Uri.parse('tel:$cleanNumber');
+
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        throw Exception('No phone app available');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not make call: $e')),
+        );
+      }
     }
   }
 
@@ -116,10 +133,7 @@ class _CustomersPageState extends State<CustomersPage> {
                 title: Text(number),
                 onTap: () async {
                   Navigator.of(context).pop();
-                  final url = Uri.parse('tel:$number');
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url);
-                  }
+                  await _launchPhoneCall(number);
                 },
               );
             }).toList(),
@@ -189,11 +203,17 @@ class _CustomersPageState extends State<CustomersPage> {
 
   Future<void> _launchWhatsApp(String number) async {
     try {
-      final url = Uri.parse('https://wa.me/$number');
+      // Clean the phone number - remove any non-digit characters except +
+      final cleanNumber = number.replaceAll(RegExp(r'[^\d+]'), '');
+      // Remove leading + if present for WhatsApp URL
+      final whatsappNumber = cleanNumber.startsWith('+') ? cleanNumber.substring(1) : cleanNumber;
+
+      final url = Uri.parse('https://wa.me/$whatsappNumber');
+
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
       } else {
-        throw Exception('Could not launch WhatsApp');
+        throw Exception('WhatsApp not installed or not available');
       }
     } catch (e) {
       if (mounted) {
@@ -312,24 +332,38 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 
   Future<void> _openGoogleMaps(double latitude, double longitude, String customerName) async {
-    final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
-    final appleMapsUrl = Uri.parse('https://maps.apple.com/?q=$latitude,$longitude');
-
     try {
-      // Try Google Maps first
-      if (await canLaunchUrl(googleMapsUrl)) {
-        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
-      } else if (await canLaunchUrl(appleMapsUrl)) {
-        // Fallback to Apple Maps on iOS
-        await launchUrl(appleMapsUrl, mode: LaunchMode.externalApplication);
-      } else {
-        // Fallback to generic maps URL
-        final genericUrl = Uri.parse('geo:$latitude,$longitude?q=$latitude,$longitude($customerName)');
-        if (await canLaunchUrl(genericUrl)) {
-          await launchUrl(genericUrl, mode: LaunchMode.externalApplication);
-        } else {
-          throw Exception('No map application available');
+      // URL encode the customer name for proper handling
+      final encodedName = Uri.encodeComponent(customerName);
+
+      // Try different map URL formats in order of preference
+      final urls = [
+        // Google Maps web URL (works on most devices)
+        Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude'),
+        // Google Maps app URL
+        Uri.parse('https://maps.google.com/?q=$latitude,$longitude'),
+        // Generic geo URL (works with most map apps)
+        Uri.parse('geo:$latitude,$longitude?q=$latitude,$longitude($encodedName)'),
+        // Apple Maps (iOS)
+        Uri.parse('https://maps.apple.com/?q=$latitude,$longitude'),
+      ];
+
+      bool launched = false;
+      for (final url in urls) {
+        try {
+          if (await canLaunchUrl(url)) {
+            await launchUrl(url, mode: LaunchMode.externalApplication);
+            launched = true;
+            break;
+          }
+        } catch (e) {
+          // Continue to next URL if this one fails
+          continue;
         }
+      }
+
+      if (!launched) {
+        throw Exception('No map application available');
       }
     } catch (e) {
       if (mounted) {
