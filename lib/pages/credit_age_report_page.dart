@@ -16,6 +16,8 @@ class CreditAgeReportPage extends StatefulWidget {
 class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
   List<Transaction> _creditTransactions = [];
   bool _isLoading = true;
+  int _numberOfDays = 30;
+  String _condition = 'greater_than';
 
   @override
   void initState() {
@@ -29,7 +31,13 @@ class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
     });
 
     try {
-      final transactions = CustomerService.getCreditAgeTransactions(widget.customer.id);
+      // Use real API with parameters
+      final transactions = await CustomerService.getCreditAgeReport(
+        customerId: widget.customer.id,
+        financialYearId: '2', // Default financial year ID
+        numberOfDays: _numberOfDays,
+        condition: _condition,
+      );
       setState(() {
         _creditTransactions = transactions;
         _isLoading = false;
@@ -102,6 +110,62 @@ class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
                   style: TextStyle(color: Colors.grey[600]),
                 ),
                 const SizedBox(height: 12),
+                // Filter Section
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Days:', style: TextStyle(fontWeight: FontWeight.w500)),
+                          DropdownButton<int>(
+                            value: _numberOfDays,
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() {
+                                  _numberOfDays = value;
+                                });
+                                _loadCreditTransactions();
+                              }
+                            },
+                            items: [30, 60, 90, 120, 180, 365].map((days) {
+                              return DropdownMenuItem<int>(
+                                value: days,
+                                child: Text('$days days'),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Condition:', style: TextStyle(fontWeight: FontWeight.w500)),
+                          DropdownButton<String>(
+                            value: _condition,
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() {
+                                  _condition = value;
+                                });
+                                _loadCreditTransactions();
+                              }
+                            },
+                            items: const [
+                              DropdownMenuItem(value: 'greater_than', child: Text('Greater than')),
+                              DropdownMenuItem(value: 'less_than', child: Text('Less than')),
+                              DropdownMenuItem(value: 'equal_to', child: Text('Equal to')),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -157,8 +221,8 @@ class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
       floatingActionButton: _creditTransactions.isNotEmpty
           ? FloatingActionButton(
               onPressed: _shareCreditAgeReport,
-              child: const Icon(Icons.share),
               tooltip: 'Share Credit Age Report',
+              child: const Icon(Icons.share),
             )
           : null,
     );

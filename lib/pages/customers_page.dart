@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:eazystaff/models/customer.dart';
 import 'package:eazystaff/services/customer_service.dart';
 import 'package:eazystaff/pages/customer_detail_page.dart';
+import 'package:eazystaff/utilitis/location_helper.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
 
 class CustomersPage extends StatefulWidget {
   const CustomersPage({super.key});
@@ -133,46 +136,69 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 
   Future<void> _openWhatsApp(Customer customer) async {
-    final whatsappNumber =
-        customer.whatsappNumber ??
-        (customer.mobileNumbers.isNotEmpty
-            ? customer.mobileNumbers.first
-            : null);
+    // If customer has a specific WhatsApp number, use it
+    if (customer.whatsappNumber != null && customer.whatsappNumber!.isNotEmpty) {
+      _launchWhatsApp(customer.whatsappNumber!);
+      return;
+    }
 
-    if (whatsappNumber == null) {
+    // If no specific WhatsApp number, check mobile numbers
+    if (customer.mobileNumbers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No WhatsApp number available')),
       );
       return;
     }
 
-    // Pre-filled message for WhatsApp
-    final message = Uri.encodeComponent(
-      'Hello ${customer.name}, I am contacting you regarding your account. How can I assist you today?'
+    if (customer.mobileNumbers.length == 1) {
+      _launchWhatsApp(customer.mobileNumbers.first);
+    } else {
+      _showWhatsAppNumberDialog(customer);
+    }
+  }
+
+  void _showWhatsAppNumberDialog(Customer customer) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Select WhatsApp Number for ${customer.name}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: customer.mobileNumbers.map((number) {
+              return ListTile(
+                leading: const FaIcon(FontAwesomeIcons.whatsapp, color: Colors.green),
+                title: Text(number),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _launchWhatsApp(number);
+                },
+              );
+            }).toList(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
     );
+  }
 
-    final url = Uri.parse('https://wa.me/$whatsappNumber?text=$message');
-
+  Future<void> _launchWhatsApp(String number) async {
     try {
+      final url = Uri.parse('https://wa.me/$number');
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
       } else {
-        // Fallback to basic WhatsApp URL without message
-        final basicUrl = Uri.parse('https://wa.me/$whatsappNumber');
-        if (await canLaunchUrl(basicUrl)) {
-          await launchUrl(basicUrl, mode: LaunchMode.externalApplication);
-        } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('WhatsApp is not installed on this device')),
-            );
-          }
-        }
+        throw Exception('Could not launch WhatsApp');
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error opening WhatsApp: $e')),
+          SnackBar(content: Text('Could not open WhatsApp: $e')),
         );
       }
     }
@@ -253,19 +279,9 @@ class _CustomersPageState extends State<CustomersPage> {
   }
 
   void _handleLocation(Customer customer) {
-    if (customer.locationSet) {
-      // Show location on map
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Opening location for ${customer.name}'),
-          action: SnackBarAction(
-            label: 'View',
-            onPressed: () {
-              // TODO: Open map with customer location
-            },
-          ),
-        ),
-      );
+    if (customer.locationSet && customer.latitude != null && customer.longitude != null) {
+      // Open Google Maps with customer location
+      _openGoogleMaps(customer.latitude!, customer.longitude!, customer.name);
     } else {
       // Ask to set location
       showDialog(
@@ -284,12 +300,7 @@ class _CustomersPageState extends State<CustomersPage> {
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pop();
-                  // TODO: Implement location setting
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Location setting feature coming soon'),
-                    ),
-                  );
+                  _setCustomerLocation(customer);
                 },
                 child: const Text('Set Location'),
               ),
@@ -297,6 +308,137 @@ class _CustomersPageState extends State<CustomersPage> {
           );
         },
       );
+    }
+  }
+
+  Future<void> _openGoogleMaps(double latitude, double longitude, String customerName) async {
+    final googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
+    final appleMapsUrl = Uri.parse('https://maps.apple.com/?q=$latitude,$longitude');
+
+    try {
+      // Try Google Maps first
+      if (await canLaunchUrl(googleMapsUrl)) {
+        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+      } else if (await canLaunchUrl(appleMapsUrl)) {
+        // Fallback to Apple Maps on iOS
+        await launchUrl(appleMapsUrl, mode: LaunchMode.externalApplication);
+      } else {
+        // Fallback to generic maps URL
+        final genericUrl = Uri.parse('geo:$latitude,$longitude?q=$latitude,$longitude($customerName)');
+        if (await canLaunchUrl(genericUrl)) {
+          await launchUrl(genericUrl, mode: LaunchMode.externalApplication);
+        } else {
+          throw Exception('No map application available');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open maps: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _setCustomerLocation(Customer customer) async {
+    try {
+      // Check location permission
+      final hasPermission = await LocationHelper.ensurePermission();
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission is required')),
+          );
+        }
+        return;
+      }
+
+      // Show loading dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return const AlertDialog(
+              content: Row(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 20),
+                  Text('Getting current location...'),
+                ],
+              ),
+            );
+          },
+        );
+      }
+
+      // Get current location
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+        ),
+      );
+
+      // Close loading dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Update customer location
+      final success = await CustomerService.updateCustomerLocation(
+        customer.id,
+        position.latitude,
+        position.longitude,
+      );
+
+      if (success) {
+        // Update local customer data
+        final index = _customers.indexWhere((c) => c.id == customer.id);
+        if (index != -1) {
+          setState(() {
+            _customers[index] = _customers[index].copyWith(
+              latitude: position.latitude,
+              longitude: position.longitude,
+              locationSet: true,
+            );
+            _filterCustomers(); // Refresh filtered list
+          });
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Location set for ${customer.name}'),
+              action: SnackBarAction(
+                label: 'View',
+                onPressed: () => _openGoogleMaps(
+                  position.latitude,
+                  position.longitude,
+                  customer.name,
+                ),
+              ),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to update customer location')),
+          );
+        }
+      }
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error setting location: $e')),
+        );
+      }
     }
   }
 
@@ -590,19 +732,19 @@ class _CustomersPageState extends State<CustomersPage> {
                       ),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.chat,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                      onPressed: () => _openWhatsApp(customer),
-                      tooltip: 'WhatsApp',
-                      constraints: const BoxConstraints(
-                        minWidth: 36,
-                        minHeight: 36,
-                      ),
-                    ),
+child: IconButton(
+  icon: const FaIcon(
+    FontAwesomeIcons.whatsapp,
+    color: Colors.white,
+    size: 18,
+  ),
+  onPressed: () => _openWhatsApp(customer),
+  tooltip: 'WhatsApp',
+  constraints: const BoxConstraints(
+    minWidth: 36,
+    minHeight: 36,
+  ),
+),
                   ),
                 ],
               ),

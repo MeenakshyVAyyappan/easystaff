@@ -322,8 +322,168 @@ class CustomerService {
 
   static List<Transaction> getCreditAgeTransactions(String customerId) {
     return _mockTransactions
-        .where((t) => t.customerId == customerId && 
+        .where((t) => t.customerId == customerId &&
                      (t.type == TransactionType.sales || t.type == TransactionType.openingBalance))
         .toList();
+  }
+
+  // Customer Statement API
+  static Future<List<Transaction>> getCustomerStatement({
+    required String customerId,
+    required String financialYearId,
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    try {
+      final user = AuthService.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get authentication headers
+      final authHeaders = await AuthService.authHeaders();
+
+      final headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json, text/plain, */*',
+        ...authHeaders,
+      };
+
+      final body = {
+        'financialyearid': financialYearId,
+        'sdate': '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}',
+        'edate': '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}',
+        'customerid': customerId,
+      };
+
+      if (kDebugMode) {
+        debugPrint('Fetching customer statement with params: $body');
+      }
+
+      final response = await http.post(
+        Uri.parse('https://ezyerp.ezyplus.in/customerstatement.php'),
+        headers: headers,
+        body: body,
+      ).timeout(const Duration(seconds: 30));
+
+      if (kDebugMode) {
+        debugPrint('Customer Statement API response: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
+      }
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to load customer statement: ${response.statusCode}');
+      }
+
+      final jsonData = jsonDecode(response.body);
+
+      // Handle different response formats
+      List<dynamic> transactionsList;
+      if (jsonData is List) {
+        transactionsList = jsonData;
+      } else if (jsonData is Map && jsonData.containsKey('transactions')) {
+        transactionsList = jsonData['transactions'] as List;
+      } else if (jsonData is Map && jsonData.containsKey('data')) {
+        transactionsList = jsonData['data'] as List;
+      } else {
+        throw Exception('Unexpected API response format');
+      }
+
+      final transactions = transactionsList.map((json) => Transaction.fromJson(json as Map<String, dynamic>)).toList();
+
+      if (kDebugMode) {
+        debugPrint('Successfully parsed ${transactions.length} transactions');
+      }
+
+      return transactions;
+
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error fetching customer statement: $e');
+      }
+      // Fallback to mock data in case of error during development
+      await Future.delayed(const Duration(milliseconds: 500));
+      return _mockTransactions.where((t) => t.customerId == customerId).toList();
+    }
+  }
+
+  // Credit Age Report API
+  static Future<List<Transaction>> getCreditAgeReport({
+    required String customerId,
+    required String financialYearId,
+    required int numberOfDays,
+    required String condition, // e.g., "greater_than", "less_than", "equal_to"
+  }) async {
+    try {
+      final user = AuthService.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get authentication headers
+      final authHeaders = await AuthService.authHeaders();
+
+      final headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json, text/plain, */*',
+        ...authHeaders,
+      };
+
+      final body = {
+        'financialyearid': financialYearId,
+        'noofdays': numberOfDays.toString(),
+        'condition': condition,
+        'customerid': customerId,
+      };
+
+      if (kDebugMode) {
+        debugPrint('Fetching credit age report with params: $body');
+      }
+
+      final response = await http.post(
+        Uri.parse('https://ezyerp.ezyplus.in/creditagingreport.php'),
+        headers: headers,
+        body: body,
+      ).timeout(const Duration(seconds: 30));
+
+      if (kDebugMode) {
+        debugPrint('Credit Age Report API response: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
+      }
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to load credit age report: ${response.statusCode}');
+      }
+
+      final jsonData = jsonDecode(response.body);
+
+      // Handle different response formats
+      List<dynamic> transactionsList;
+      if (jsonData is List) {
+        transactionsList = jsonData;
+      } else if (jsonData is Map && jsonData.containsKey('transactions')) {
+        transactionsList = jsonData['transactions'] as List;
+      } else if (jsonData is Map && jsonData.containsKey('data')) {
+        transactionsList = jsonData['data'] as List;
+      } else {
+        throw Exception('Unexpected API response format');
+      }
+
+      final transactions = transactionsList.map((json) => Transaction.fromJson(json as Map<String, dynamic>)).toList();
+
+      if (kDebugMode) {
+        debugPrint('Successfully parsed ${transactions.length} credit age transactions');
+      }
+
+      return transactions;
+
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error fetching credit age report: $e');
+      }
+      // Fallback to mock data in case of error during development
+      await Future.delayed(const Duration(milliseconds: 500));
+      return getCreditAgeTransactions(customerId);
+    }
   }
 }

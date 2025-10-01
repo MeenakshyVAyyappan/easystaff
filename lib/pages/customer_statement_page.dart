@@ -32,7 +32,13 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> {
     });
 
     try {
-      final transactions = await CustomerService.getCustomerTransactions(widget.customer.id);
+      // Use real API with date range
+      final transactions = await CustomerService.getCustomerStatement(
+        customerId: widget.customer.id,
+        financialYearId: '2', // Default financial year ID
+        startDate: _selectedFromDate,
+        endDate: _selectedToDate,
+      );
       setState(() {
         _transactions = transactions;
         _filteredTransactions = _filterTransactionsByDate(transactions);
@@ -270,8 +276,8 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> {
       floatingActionButton: _filteredTransactions.isNotEmpty
           ? FloatingActionButton(
               onPressed: _shareStatement,
-              child: const Icon(Icons.share),
               tooltip: 'Share Statement',
+              child: const Icon(Icons.share),
             )
           : null,
     );
