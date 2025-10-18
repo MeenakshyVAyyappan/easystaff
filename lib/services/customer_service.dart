@@ -199,6 +199,7 @@ class CustomerService {
         'officeid': '1',
         'officecode': 'WF01',
         'financialyearid': '2',
+        'empid': '2',
       };
 
       if (kDebugMode) {
@@ -301,9 +302,110 @@ class CustomerService {
   }
 
   static Future<bool> addCollectionEntry(CollectionEntry entry) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    _mockCollections.add(entry);
-    return true;
+    try {
+      final user = AuthService.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get authentication headers
+      final authHeaders = await AuthService.authHeaders();
+
+      final headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json, text/plain, */*',
+        ...authHeaders,
+      };
+
+      // Format dates for API
+      final rdate = '${entry.date.year}-${entry.date.month.toString().padLeft(2, '0')}-${entry.date.day.toString().padLeft(2, '0')}';
+      final chequeDate = entry.chequeDate != null
+          ? '${entry.chequeDate!.year}-${entry.chequeDate!.month.toString().padLeft(2, '0')}-${entry.chequeDate!.day.toString().padLeft(2, '0')}'
+          : '';
+
+      // Map payment type to API format
+      String paymentTypeStr = entry.paymentType.toString().split('.').last.toLowerCase();
+      if (paymentTypeStr == 'cheque') {
+        paymentTypeStr = 'cheque';
+      } else if (paymentTypeStr == 'online') {
+        paymentTypeStr = 'online';
+      } else if (paymentTypeStr == 'card') {
+        paymentTypeStr = 'card';
+      } else {
+        paymentTypeStr = 'cash';
+      }
+
+      final body = {
+        'officecode': user.officeCode,
+        'officeid': user.officeId,
+        'financialyearid': user.financialYearId,
+        'rdate': rdate,
+        'empid': user.employeeId,
+        'empidc': user.employeeId, // Employee code (same as empid)
+        'payment': paymentTypeStr,
+        'amount': entry.amount.toString(),
+        'customerid': entry.customerId,
+        'chequeno': entry.chequeNo ?? '',
+        'chequedate': chequeDate,
+        'remarks': entry.remarks ?? '',
+        'custledger': 'Y', // Enable customer ledger update
+      };
+
+      if (kDebugMode) {
+        debugPrint('Adding collection entry with params: $body');
+      }
+
+      final response = await http.post(
+        Uri.parse('https://ezyerp.ezyplus.in/newreceipt.php'),
+        headers: headers,
+        body: body,
+      ).timeout(const Duration(seconds: 30));
+
+      if (kDebugMode) {
+        debugPrint('Collection Entry API response: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
+      }
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to add collection entry: ${response.statusCode}');
+      }
+
+      final jsonData = jsonDecode(response.body);
+
+      if (kDebugMode) {
+        debugPrint('Collection Entry JSON: $jsonData');
+      }
+
+      // Check if API returned success
+      if (jsonData is Map) {
+        final flag = jsonData['flag'] ?? false;
+        final msg = jsonData['msg'] ?? '';
+
+        if (kDebugMode) {
+          debugPrint('API flag: $flag, msg: $msg');
+        }
+
+        if (flag == true || flag == 1 || msg.toLowerCase().contains('success')) {
+          // Also add to mock data for local display
+          _mockCollections.add(entry);
+          return true;
+        } else {
+          throw Exception('API returned error: $msg');
+        }
+      }
+
+      // If response is not a map, assume success if status is 200
+      _mockCollections.add(entry);
+      return true;
+
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error adding collection entry: $e');
+      }
+      // Fallback to mock data in case of error during development
+      _mockCollections.add(entry);
+      return false;
+    }
   }
 
   static Future<bool> updateCustomerLocation(String customerId, double latitude, double longitude) async {
@@ -333,6 +435,8 @@ class CustomerService {
     required String financialYearId,
     required DateTime startDate,
     required DateTime endDate,
+    String officeCode = 'WF01',
+    String officeId = '1',
   }) async {
     try {
       final user = AuthService.currentUser;
@@ -350,6 +454,8 @@ class CustomerService {
       };
 
       final body = {
+        'officecode': officeCode,
+        'officeid': officeId,
         'financialyearid': financialYearId,
         'sdate': '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}',
         'edate': '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}',
@@ -444,6 +550,8 @@ class CustomerService {
     required String financialYearId,
     required int numberOfDays,
     required String condition, // e.g., "greater_than", "less_than", "equal_to"
+    String officeCode = 'WF01',
+    String officeId = '1',
   }) async {
     try {
       final user = AuthService.currentUser;
@@ -461,6 +569,8 @@ class CustomerService {
       };
 
       final body = {
+        'officecode': officeCode,
+        'officeid': officeId,
         'financialyearid': financialYearId,
         'noofdays': numberOfDays.toString(),
         'condition': condition,

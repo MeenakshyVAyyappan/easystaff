@@ -285,54 +285,135 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> {
 
   Widget _buildTransactionCard(Transaction transaction) {
     final dateFormat = DateFormat('dd/MM/yyyy');
-    
+    final typeStr = transaction.type.toString().split('.').last;
+
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        title: Text(
-          transaction.invoiceNo,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Column(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Date: ${dateFormat.format(transaction.date)}'),
-            Text('Type: ${transaction.type.toString().split('.').last.toUpperCase()}'),
-            if (transaction.remarks?.isNotEmpty == true)
-              Text('Remarks: ${transaction.remarks}'),
-          ],
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (transaction.creditAmount > 0)
-              Text(
-                '₹${transaction.creditAmount.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue,
+            // Invoice number and type
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  transaction.invoiceNo,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
-              ),
-            if (transaction.receiptAmount > 0)
-              Text(
-                '₹${transaction.receiptAmount.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _getTypeColor(typeStr).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: _getTypeColor(typeStr)),
+                  ),
+                  child: Text(
+                    typeStr.replaceAll('_', ' ').toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: _getTypeColor(typeStr),
+                    ),
+                  ),
                 ),
-              ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Date and remarks
             Text(
-              '₹${transaction.balanceAmount.toStringAsFixed(2)}',
+              dateFormat.format(transaction.date),
               style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: transaction.balanceAmount > 0 ? Colors.red : Colors.green,
                 fontSize: 12,
+                color: Colors.grey[600],
               ),
+            ),
+            if (transaction.remarks?.isNotEmpty == true)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  transaction.remarks!,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[700],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            // Amounts
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (transaction.creditAmount > 0)
+                      Text(
+                        '₹ ${transaction.creditAmount.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                          fontSize: 13,
+                        ),
+                      ),
+                    if (transaction.receiptAmount > 0)
+                      Text(
+                        '₹ ${transaction.receiptAmount.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                          fontSize: 13,
+                        ),
+                      ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      'Balance:',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                    Text(
+                      '₹ ${transaction.balanceAmount.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: transaction.balanceAmount > 0 ? Colors.red : Colors.green,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  Color _getTypeColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'sales':
+      case 'credit':
+        return Colors.blue;
+      case 'receipt':
+      case 'payment':
+        return Colors.green;
+      case 'return':
+      case 'return_':
+        return Colors.orange;
+      case 'journal':
+        return Colors.purple;
+      case 'openingbalance':
+        return Colors.teal;
+      default:
+        return Colors.grey;
+    }
   }
 }

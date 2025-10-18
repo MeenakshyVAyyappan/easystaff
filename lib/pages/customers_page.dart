@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:eazystaff/models/customer.dart';
 import 'package:eazystaff/services/customer_service.dart';
 import 'package:eazystaff/pages/customer_detail_page.dart';
-import 'package:eazystaff/utilitis/location_helper.dart';
+import 'package:eazystaff/pages/customer_location_page.dart';
+import 'package:eazystaff/pages/set_customer_location_page.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class CustomersPage extends StatefulWidget {
   const CustomersPage({super.key});
@@ -41,7 +42,9 @@ class _CustomersPageState extends State<CustomersPage> {
     });
 
     try {
+      print('DEBUG: Loading customers...');
       final customers = await CustomerService.getCustomers();
+      print('DEBUG: Loaded ${customers.length} customers');
       final areas = customers.map((c) => c.areaName).toSet().toList();
       areas.sort();
 
@@ -51,7 +54,9 @@ class _CustomersPageState extends State<CustomersPage> {
         _areas = ['All Areas', ...areas];
         _isLoading = false;
       });
+      print('DEBUG: State updated with ${_filteredCustomers.length} filtered customers');
     } catch (e) {
+      print('DEBUG: Error loading customers: $e');
       setState(() {
         _isLoading = false;
       });
@@ -102,18 +107,54 @@ class _CustomersPageState extends State<CustomersPage> {
   Future<void> _launchPhoneCall(String phoneNumber) async {
     try {
       // Clean the phone number - remove any non-digit characters except +
-      final cleanNumber = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
+      var cleanNumber = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
+
+      // Validate phone number is not empty
+      if (cleanNumber.isEmpty) {
+        throw Exception('Invalid phone number');
+      }
+
+      // Remove duplicate consecutive digits (e.g., "811309503108113095031" -> "8113095031")
+      // This handles cases where the phone number is accidentally concatenated
+      if (cleanNumber.length > 10) {
+        // Check if it's a duplicate by comparing first half with second half
+        final halfLength = cleanNumber.length ~/ 2;
+        final firstHalf = cleanNumber.substring(0, halfLength);
+        final secondHalf = cleanNumber.substring(halfLength);
+
+        if (firstHalf == secondHalf) {
+          cleanNumber = firstHalf;
+        }
+      }
+
+      // Request CALL_PHONE permission
+      final status = await Permission.phone.request();
+
+      if (!status.isGranted) {
+        throw Exception('Phone permission not granted');
+      }
+
       final url = Uri.parse('tel:$cleanNumber');
 
-      if (await canLaunchUrl(url)) {
+      // Try to launch the URL
+      // Note: canLaunchUrl might not work on all devices/emulators, so we try to launch directly
+      try {
         await launchUrl(url, mode: LaunchMode.externalApplication);
-      } else {
-        throw Exception('No phone app available');
+      } catch (e) {
+        // If external app fails, try system default
+        if (await canLaunchUrl(url)) {
+          await launchUrl(url);
+        } else {
+          throw Exception('Could not launch phone dialer. Phone number: $cleanNumber');
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not make call: $e')),
+          SnackBar(
+            content: Text('Error: $e'),
+            duration: const Duration(seconds: 3),
+          ),
         );
       }
     }
@@ -124,19 +165,46 @@ class _CustomersPageState extends State<CustomersPage> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('Select Mobile Number for ${customer.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: customer.mobileNumbers.map((number) {
-              return ListTile(
-                leading: const Icon(Icons.phone),
-                title: Text(number),
-                onTap: () async {
-                  Navigator.of(context).pop();
-                  await _launchPhoneCall(number);
-                },
-              );
-            }).toList(),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Select Mobile Number'),
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text(
+                  customer.name,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: customer.mobileNumbers.asMap().entries.map((entry) {
+                final index = entry.key + 1;
+                final number = entry.value;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.of(context).pop();
+                      await _launchPhoneCall(number);
+                    },
+                    icon: const Icon(Icons.phone),
+                    label: Text(
+                      'Call $index: $number',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
           ),
           actions: [
             TextButton(
@@ -300,181 +368,47 @@ class _CustomersPageState extends State<CustomersPage> {
 
   void _handleLocation(Customer customer) {
     if (customer.locationSet && customer.latitude != null && customer.longitude != null) {
-      // Open Google Maps with customer location
-      _openGoogleMaps(customer.latitude!, customer.longitude!, customer.name);
-    } else {
-      // Ask to set location
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text('Set Customer Location'),
-            content: Text(
-              'Location not set for ${customer.name}. Would you like to set it now?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _setCustomerLocation(customer);
-                },
-                child: const Text('Set Location'),
-              ),
-            ],
-          );
-        },
-      );
-    }
-  }
-
-  Future<void> _openGoogleMaps(double latitude, double longitude, String customerName) async {
-    try {
-      // URL encode the customer name for proper handling
-      final encodedName = Uri.encodeComponent(customerName);
-
-      // Try different map URL formats in order of preference
-      final urls = [
-        // Google Maps web URL (works on most devices)
-        Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude'),
-        // Google Maps app URL
-        Uri.parse('https://maps.google.com/?q=$latitude,$longitude'),
-        // Generic geo URL (works with most map apps)
-        Uri.parse('geo:$latitude,$longitude?q=$latitude,$longitude($encodedName)'),
-        // Apple Maps (iOS)
-        Uri.parse('https://maps.apple.com/?q=$latitude,$longitude'),
-      ];
-
-      bool launched = false;
-      for (final url in urls) {
-        try {
-          if (await canLaunchUrl(url)) {
-            await launchUrl(url, mode: LaunchMode.externalApplication);
-            launched = true;
-            break;
-          }
-        } catch (e) {
-          // Continue to next URL if this one fails
-          continue;
-        }
-      }
-
-      if (!launched) {
-        throw Exception('No map application available');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open maps: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _setCustomerLocation(Customer customer) async {
-    try {
-      // Check location permission
-      final hasPermission = await LocationHelper.ensurePermission();
-      if (!hasPermission) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permission is required')),
-          );
-        }
-        return;
-      }
-
-      // Show loading dialog
-      if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return const AlertDialog(
-              content: Row(
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(width: 20),
-                  Text('Getting current location...'),
-                ],
-              ),
-            );
-          },
-        );
-      }
-
-      // Get current location
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 10,
+      // Navigate to location page with map
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CustomerLocationPage(customer: customer),
         ),
       );
-
-      // Close loading dialog
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
-
-      // Update customer location
-      final success = await CustomerService.updateCustomerLocation(
-        customer.id,
-        position.latitude,
-        position.longitude,
-      );
-
-      if (success) {
-        // Update local customer data
-        final index = _customers.indexWhere((c) => c.id == customer.id);
-        if (index != -1) {
-          setState(() {
-            _customers[index] = _customers[index].copyWith(
-              latitude: position.latitude,
-              longitude: position.longitude,
-              locationSet: true,
-            );
-            _filterCustomers(); // Refresh filtered list
-          });
+    } else {
+      // Navigate to map picker to set location
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SetCustomerLocationPage(
+            customer: customer,
+            onLocationSaved: (updatedCustomer) {
+              // Update the customer in the list
+              final index = _customers.indexWhere((c) => c.id == updatedCustomer.id);
+              if (index != -1) {
+                setState(() {
+                  _customers[index] = updatedCustomer;
+                  _filterCustomers();
+                });
+              }
+            },
+          ),
+        ),
+      ).then((result) {
+        // Handle result if location was saved
+        if (result is Customer) {
+          final index = _customers.indexWhere((c) => c.id == result.id);
+          if (index != -1) {
+            setState(() {
+              _customers[index] = result;
+              _filterCustomers();
+            });
+          }
         }
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Location set for ${customer.name}'),
-              action: SnackBarAction(
-                label: 'View',
-                onPressed: () => _openGoogleMaps(
-                  position.latitude,
-                  position.longitude,
-                  customer.name,
-                ),
-              ),
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to update customer location')),
-          );
-        }
-      }
-    } catch (e) {
-      // Close loading dialog if still open
-      if (mounted && Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error setting location: $e')),
-        );
-      }
+      });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -604,10 +538,25 @@ class _CustomersPageState extends State<CustomersPage> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredCustomers.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No customers found',
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'No customers found',
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Total customers: ${_customers.length}',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: _loadCustomers,
+                          child: Text('Retry'),
+                        ),
+                      ],
                     ),
                   )
                 : RefreshIndicator(

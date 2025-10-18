@@ -19,6 +19,8 @@ class AppUser {
   final String department;
   final String designation;
   final String officeCode;
+  final String officeId;
+  final String financialYearId;
   final String location;
 
   AppUser({
@@ -28,6 +30,8 @@ class AppUser {
     required this.department,
     required this.designation,
     required this.officeCode,
+    required this.officeId,
+    required this.financialYearId,
     required this.location,
   });
 
@@ -45,10 +49,12 @@ class AppUser {
     return AppUser(
       name:        _s(['name', 'full_name', 'employee_name'], 'User'),
       username:    _s(['username', 'user', 'uname'], ''),
-      employeeId:  _s(['employee_id', 'emp_id', 'id'], ''),
+      employeeId:  _s(['employee_id', 'emp_id', 'empid', 'id'], ''),
       department:  _s(['department', 'dept'], ''),
       designation: _s(['designation', 'role', 'title'], ''),
       officeCode:  _s(['office_code', 'office', 'officecode'], ''),
+      officeId:    _s(['office_id', 'officeid', 'office_id'], ''),
+      financialYearId: _s(['financial_year_id', 'financialyearid', 'year_id'], ''),
       location:    _s(['location', 'branch', 'city'], ''),
     );
   }
@@ -60,6 +66,8 @@ class AppUser {
     'department': department,
     'designation': designation,
     'office_code': officeCode,
+    'office_id': officeId,
+    'financial_year_id': financialYearId,
     'location': location,
   };
 }
@@ -179,6 +187,8 @@ static Future<String?> loadLocation() async {
           department: '',
           designation: '',
           officeCode: officeCode,
+          officeId: '1',
+          financialYearId: '2',
           location: '',
         );
         _currentUserCache = fallback;

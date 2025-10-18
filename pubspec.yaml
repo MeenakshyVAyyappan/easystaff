@@ -45,6 +45,7 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   geocoding: ^4.0.0
   font_awesome_flutter: ^10.10.0
+  google_maps_flutter: ^2.13.1
 
 dev_dependencies:
   flutter_test:

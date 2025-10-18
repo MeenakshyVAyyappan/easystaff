@@ -22,9 +22,9 @@ class SettingsPage extends StatelessWidget {
         const Divider(),
         ListTile(
           leading: const Icon(Icons.store),
-          title: const Text('Business Profile'),
+          title: const Text('Business Profile'), 
           subtitle: const Text('Name, GSTIN, Address'),
-          onTap: () {},
+          onTap: () {}, 
         ),
         ListTile(
           leading: const Icon(Icons.picture_as_pdf),

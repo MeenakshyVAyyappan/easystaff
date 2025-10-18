@@ -229,9 +229,9 @@ class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
   }
 
   Widget _buildCreditTransactionCard(Transaction transaction) {
-    final dateFormat = DateFormat('dd/MM/yyyy');
+    final dateFormat = DateFormat('yyyy-MM-dd');
     final daysOld = _calculateDaysOld(transaction.date);
-    
+
     // Determine color based on age
     Color ageColor = Colors.green;
     if (daysOld > 90) {
@@ -243,38 +243,91 @@ class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
     }
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        title: Text(
-          transaction.invoiceNo,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Column(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Date: ${dateFormat.format(transaction.date)}'),
-            Text('Type: ${transaction.type.toString().split('.').last.toUpperCase()}'),
+            // Invoice number
             Text(
-              'Amount: ₹${transaction.creditAmount.toStringAsFixed(2)}',
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              transaction.invoiceNo,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 4),
+            // Date
+            Text(
+              dateFormat.format(transaction.date),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Amount and Balance row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Total :',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                    Text(
+                      '₹ ${transaction.creditAmount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text(
+                      'Balance :',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                    Text(
+                      '₹ ${transaction.balanceAmount.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: transaction.balanceAmount > 0 ? Colors.red : Colors.green,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Days old badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: ageColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: ageColor),
+              ),
+              child: Text(
+                'No. of days\n$daysOld',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: ageColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+              ),
             ),
           ],
-        ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: ageColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: ageColor),
-          ),
-          child: Text(
-            '$daysOld days',
-            style: TextStyle(
-              color: ageColor,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
         ),
       ),
     );

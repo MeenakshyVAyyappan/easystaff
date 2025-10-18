@@ -44,34 +44,61 @@ class Customer {
       return defaultValue;
     }
 
+    // Helper function to split phone numbers that might be concatenated
+    List<String> _splitPhoneNumbers(String phoneString) {
+      if (phoneString.isEmpty) return [];
+
+      // Remove all non-digit characters except spaces, commas, and hyphens
+      final cleaned = phoneString.replaceAll(RegExp(r'[^\d\s,\-]'), '');
+
+      // Split by common delimiters (space, comma, hyphen)
+      final parts = cleaned.split(RegExp(r'[\s,\-]+'));
+
+      // Filter out empty strings and numbers that are too short (less than 7 digits)
+      return parts
+          .where((part) => part.isNotEmpty && part.length >= 7)
+          .toList();
+    }
+
     // Helper function to get mobile numbers from various possible formats
     List<String> _getMobileNumbers() {
-      final List<String> numbers = [];
+      final Set<String> numbers = {}; // Use Set to avoid duplicates
 
       // Check for array format
       if (json['mobileNumbers'] is List) {
-        numbers.addAll(List<String>.from(json['mobileNumbers']));
+        for (final num in json['mobileNumbers']) {
+          final splits = _splitPhoneNumbers(num.toString());
+          numbers.addAll(splits);
+        }
       } else if (json['mobile_numbers'] is List) {
-        numbers.addAll(List<String>.from(json['mobile_numbers']));
+        for (final num in json['mobile_numbers']) {
+          final splits = _splitPhoneNumbers(num.toString());
+          numbers.addAll(splits);
+        }
       } else if (json['phones'] is List) {
-        numbers.addAll(List<String>.from(json['phones']));
+        for (final num in json['phones']) {
+          final splits = _splitPhoneNumbers(num.toString());
+          numbers.addAll(splits);
+        }
       }
 
       // Check for single mobile number fields
       final singleMobile = _getString(['mobile', 'phone', 'mobileNumber', 'mobile_number', 'contact', 'mobileno']);
-      if (singleMobile.isNotEmpty && !numbers.contains(singleMobile)) {
-        numbers.add(singleMobile);
+      if (singleMobile.isNotEmpty) {
+        final splits = _splitPhoneNumbers(singleMobile);
+        numbers.addAll(splits);
       }
 
       // Check for additional mobile fields (mobile1, mobile2, etc.)
       for (int i = 1; i <= 3; i++) {
         final mobile = _getString(['mobile$i', 'phone$i', 'contact$i', 'mobileno$i']);
-        if (mobile.isNotEmpty && !numbers.contains(mobile)) {
-          numbers.add(mobile);
+        if (mobile.isNotEmpty) {
+          final splits = _splitPhoneNumbers(mobile);
+          numbers.addAll(splits);
         }
       }
 
-      return numbers;
+      return numbers.toList();
     }
 
     return Customer(
