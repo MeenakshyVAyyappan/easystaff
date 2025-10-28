@@ -320,29 +320,43 @@ class _CustomersPageState extends State<CustomersPage> {
               ListTile(
                 leading: const Icon(Icons.receipt_long),
                 title: const Text('Customer Statement'),
+                subtitle: const Text('View transaction history'),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          CustomerDetailPage(customer: customer, initialTab: 0),
-                    ),
-                  );
+                  try {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            CustomerDetailPage(customer: customer, initialTab: 0),
+                      ),
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error opening customer statement: $e')),
+                    );
+                  }
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.schedule),
                 title: const Text('Credit Age Report'),
+                subtitle: const Text('View outstanding invoices'),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          CustomerDetailPage(customer: customer, initialTab: 1),
-                    ),
-                  );
+                  try {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            CustomerDetailPage(customer: customer, initialTab: 1),
+                      ),
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error opening credit age report: $e')),
+                    );
+                  }
                 },
               ),
               ListTile(

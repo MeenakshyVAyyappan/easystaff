@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:eazystaff/models/customer.dart';
 import 'package:eazystaff/services/customer_service.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:eazystaff/services/auth_service.dart';
+import 'package:eazystaff/services/pdf_service.dart';
 import 'package:intl/intl.dart';
 
 class CustomerStatementPage extends StatefulWidget {
@@ -32,25 +33,58 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> {
     });
 
     try {
-      // Use real API with date range
-      final transactions = await CustomerService.getCustomerStatement(
+      print('=== CUSTOMER STATEMENT PAGE DEBUG ===');
+      print('DEBUG: Customer object: ${widget.customer.name}');
+      print('DEBUG: Customer ID: "${widget.customer.id}" (type: ${widget.customer.id.runtimeType}, length: ${widget.customer.id.length})');
+      print('DEBUG: Customer ID isEmpty: ${widget.customer.id.isEmpty}');
+      print('DEBUG: Date range: ${_selectedFromDate} to ${_selectedToDate}');
+
+      // Use real API with date range and financial year fallback
+      final transactions = await CustomerService.getCustomerStatementWithFallback(
         customerId: widget.customer.id,
-        financialYearId: '2', // Default financial year ID
         startDate: _selectedFromDate,
         endDate: _selectedToDate,
       );
-      setState(() {
-        _transactions = transactions;
-        _filteredTransactions = _filterTransactionsByDate(transactions);
-        _isLoading = false;
-      });
+
+      print('DEBUG: Loaded ${transactions.length} transactions');
+
+      // If no transactions found, try expanding the date range
+      if (transactions.isEmpty) {
+        print('DEBUG: No transactions found, trying expanded date range...');
+        final expandedStartDate = DateTime.now().subtract(const Duration(days: 365)); // 1 year back
+        final expandedTransactions = await CustomerService.getCustomerStatementWithFallback(
+          customerId: widget.customer.id,
+          startDate: expandedStartDate,
+          endDate: _selectedToDate,
+        );
+
+        print('DEBUG: Expanded search found ${expandedTransactions.length} transactions');
+
+        setState(() {
+          _transactions = expandedTransactions;
+          _filteredTransactions = _filterTransactionsByDate(expandedTransactions);
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _transactions = transactions;
+          _filteredTransactions = _filterTransactionsByDate(transactions);
+          _isLoading = false;
+        });
+      }
+
+      print('DEBUG: Filtered to ${_filteredTransactions.length} transactions');
     } catch (e) {
+      print('DEBUG: Error loading customer statement: $e');
       setState(() {
         _isLoading = false;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading transactions: $e')),
+          SnackBar(
+            content: Text('Error loading transactions: $e'),
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
     }
@@ -83,42 +117,41 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> {
     }
   }
 
-  void _shareStatement() {
-    final dateFormat = DateFormat('dd/MM/yyyy');
-    final totalCredit = _filteredTransactions.fold<double>(
-      0, (sum, transaction) => sum + transaction.creditAmount);
-    final totalReceipt = _filteredTransactions.fold<double>(
-      0, (sum, transaction) => sum + transaction.receiptAmount);
-    final balance = totalCredit - totalReceipt;
+  Future<void> _shareStatement() async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
 
-    final content = StringBuffer();
-    content.writeln('Customer Statement');
-    content.writeln('Customer: ${widget.customer.name}');
-    content.writeln('Period: ${dateFormat.format(_selectedFromDate)} to ${dateFormat.format(_selectedToDate)}');
-    content.writeln('');
-    
-    for (final transaction in _filteredTransactions) {
-      content.writeln('Date: ${dateFormat.format(transaction.date)}');
-      content.writeln('Invoice: ${transaction.invoiceNo}');
-      content.writeln('Type: ${transaction.type.toString().split('.').last}');
-      if (transaction.creditAmount > 0) {
-        content.writeln('Credit: ₹${transaction.creditAmount.toStringAsFixed(2)}');
+      // Generate and share PDF
+      await PdfService.generateAndShareCustomerStatement(
+        customer: widget.customer,
+        transactions: _filteredTransactions,
+        fromDate: _selectedFromDate,
+        toDate: _selectedToDate,
+      );
+
+      // Hide loading indicator
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      // Hide loading indicator
+      if (mounted) Navigator.pop(context);
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating PDF: $e')),
+        );
       }
-      if (transaction.receiptAmount > 0) {
-        content.writeln('Receipt: ₹${transaction.receiptAmount.toStringAsFixed(2)}');
-      }
-      content.writeln('Balance: ₹${transaction.balanceAmount.toStringAsFixed(2)}');
-      content.writeln('---');
     }
-    
-    content.writeln('');
-    content.writeln('Summary:');
-    content.writeln('Total Credit: ₹${totalCredit.toStringAsFixed(2)}');
-    content.writeln('Total Receipt: ₹${totalReceipt.toStringAsFixed(2)}');
-    content.writeln('Balance: ₹${balance.toStringAsFixed(2)}');
-
-    Share.share(content.toString(), subject: 'Customer Statement - ${widget.customer.name}');
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -209,10 +242,50 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredTransactions.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No transactions found for selected period',
-                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.receipt_long_outlined,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No transactions found',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'This customer may not have any transactions\nin the selected date range or financial year.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _selectedFromDate = DateTime.now().subtract(const Duration(days: 365));
+                                  _selectedToDate = DateTime.now();
+                                });
+                                _loadTransactions();
+                              },
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Try Last Year'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
                         ),
                       )
                     : ListView.builder(
@@ -268,18 +341,29 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 16),
+                // Centered Share Button
+                if (_filteredTransactions.isNotEmpty)
+                  Center(
+                    child: ElevatedButton.icon(
+                      onPressed: _shareStatement,
+                      icon: const Icon(Icons.picture_as_pdf, size: 20),
+                      label: const Text('Share as PDF'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
         ],
       ),
-      floatingActionButton: _filteredTransactions.isNotEmpty
-          ? FloatingActionButton(
-              onPressed: _shareStatement,
-              tooltip: 'Share Statement',
-              child: const Icon(Icons.share),
-            )
-          : null,
     );
   }
 

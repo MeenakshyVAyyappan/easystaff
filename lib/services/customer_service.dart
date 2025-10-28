@@ -221,10 +221,10 @@ class CustomerService {
       };
 
       final body = {
-        'officeid': '1',
-        'officecode': 'WF01',
-        'financialyearid': '2',
-        'empid': '2',
+        'officeid': user.officeId,
+        'officecode': user.officeCode,
+        'financialyearid': user.financialYearId,
+        'empid': user.employeeId.isNotEmpty ? user.employeeId : '2',
       };
 
       if (kDebugMode) {
@@ -281,7 +281,14 @@ class CustomerService {
       if (kDebugMode) {
         debugPrint('Successfully parsed ${customers.length} customers');
         if (customers.isNotEmpty) {
-          debugPrint('First customer: ${customers.first.name} (ID: ${customers.first.id})');
+          debugPrint('=== CUSTOMER IDS DEBUG ===');
+          for (int i = 0; i < customers.length && i < 5; i++) {
+            final customer = customers[i];
+            debugPrint('Customer $i: ${customer.name} (ID: "${customer.id}", type: ${customer.id.runtimeType}, length: ${customer.id.length})');
+          }
+          if (customers.length > 5) {
+            debugPrint('... and ${customers.length - 5} more customers');
+          }
         }
       }
 
@@ -566,14 +573,68 @@ class CustomerService {
         .toList();
   }
 
+  // Helper method to try multiple financial years
+  static Future<List<Transaction>> getCustomerStatementWithFallback({
+    required String customerId,
+    required DateTime startDate,
+    required DateTime endDate,
+    String? officeCode,
+    String? officeId,
+  }) async {
+    final user = AuthService.currentUser;
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+
+    // Try current financial year first
+    final currentYearId = user.financialYearId.isNotEmpty ? user.financialYearId : '2';
+    var transactions = await getCustomerStatement(
+      customerId: customerId,
+      financialYearId: currentYearId,
+      startDate: startDate,
+      endDate: endDate,
+      officeCode: officeCode,
+      officeId: officeId,
+    );
+
+    // If no transactions found, try other common financial years
+    if (transactions.isEmpty) {
+      final yearsToTry = ['1', '2', '3', '4', '5'].where((y) => y != currentYearId);
+
+      for (final yearId in yearsToTry) {
+        if (kDebugMode) {
+          debugPrint('Trying financial year: $yearId');
+        }
+
+        transactions = await getCustomerStatement(
+          customerId: customerId,
+          financialYearId: yearId,
+          startDate: startDate,
+          endDate: endDate,
+          officeCode: officeCode,
+          officeId: officeId,
+        );
+
+        if (transactions.isNotEmpty) {
+          if (kDebugMode) {
+            debugPrint('Found ${transactions.length} transactions in financial year: $yearId');
+          }
+          break;
+        }
+      }
+    }
+
+    return transactions;
+  }
+
   // Customer Statement API
   static Future<List<Transaction>> getCustomerStatement({
     required String customerId,
     required String financialYearId,
     required DateTime startDate,
     required DateTime endDate,
-    String officeCode = 'WF01',
-    String officeId = '1',
+    String? officeCode,
+    String? officeId,
   }) async {
     try {
       final user = AuthService.currentUser;
@@ -591,8 +652,8 @@ class CustomerService {
       };
 
       final body = {
-        'officecode': officeCode,
-        'officeid': officeId,
+        'officecode': officeCode ?? user.officeCode,
+        'officeid': officeId ?? user.officeId,
         'financialyearid': financialYearId,
         'sdate': '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}',
         'edate': '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}',
@@ -600,8 +661,12 @@ class CustomerService {
       };
 
       if (kDebugMode) {
+        debugPrint('=== CUSTOMER STATEMENT DEBUG ===');
         debugPrint('Fetching customer statement with params: $body');
         debugPrint('Customer ID being sent: $customerId (type: ${customerId.runtimeType})');
+        debugPrint('Customer ID length: ${customerId.length}');
+        debugPrint('Customer ID isEmpty: ${customerId.isEmpty}');
+        debugPrint('Raw customer ID: "$customerId"');
       }
 
       final response = await http.post(
@@ -711,14 +776,68 @@ class CustomerService {
     }
   }
 
+  // Helper method to try multiple financial years for credit age report
+  static Future<List<Transaction>> getCreditAgeReportWithFallback({
+    required String customerId,
+    required int numberOfDays,
+    required String condition,
+    String? officeCode,
+    String? officeId,
+  }) async {
+    final user = AuthService.currentUser;
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+
+    // Try current financial year first
+    final currentYearId = user.financialYearId.isNotEmpty ? user.financialYearId : '2';
+    var transactions = await getCreditAgeReport(
+      customerId: customerId,
+      financialYearId: currentYearId,
+      numberOfDays: numberOfDays,
+      condition: condition,
+      officeCode: officeCode,
+      officeId: officeId,
+    );
+
+    // If no transactions found, try other common financial years
+    if (transactions.isEmpty) {
+      final yearsToTry = ['1', '2', '3', '4', '5'].where((y) => y != currentYearId);
+
+      for (final yearId in yearsToTry) {
+        if (kDebugMode) {
+          debugPrint('Trying financial year for credit age: $yearId');
+        }
+
+        transactions = await getCreditAgeReport(
+          customerId: customerId,
+          financialYearId: yearId,
+          numberOfDays: numberOfDays,
+          condition: condition,
+          officeCode: officeCode,
+          officeId: officeId,
+        );
+
+        if (transactions.isNotEmpty) {
+          if (kDebugMode) {
+            debugPrint('Found ${transactions.length} credit transactions in financial year: $yearId');
+          }
+          break;
+        }
+      }
+    }
+
+    return transactions;
+  }
+
   // Credit Age Report API
   static Future<List<Transaction>> getCreditAgeReport({
     required String customerId,
     required String financialYearId,
     required int numberOfDays,
     required String condition, // e.g., "greater_than", "less_than", "equal_to"
-    String officeCode = 'WF01',
-    String officeId = '1',
+    String? officeCode,
+    String? officeId,
   }) async {
     try {
       final user = AuthService.currentUser;
@@ -736,8 +855,8 @@ class CustomerService {
       };
 
       final body = {
-        'officecode': officeCode,
-        'officeid': officeId,
+        'officecode': officeCode ?? user.officeCode,
+        'officeid': officeId ?? user.officeId,
         'financialyearid': financialYearId,
         'noofdays': numberOfDays.toString(),
         'condition': condition,
@@ -745,8 +864,12 @@ class CustomerService {
       };
 
       if (kDebugMode) {
+        debugPrint('=== CREDIT AGE REPORT DEBUG ===');
         debugPrint('Fetching credit age report with params: $body');
         debugPrint('Customer ID being sent: $customerId (type: ${customerId.runtimeType})');
+        debugPrint('Customer ID length: ${customerId.length}');
+        debugPrint('Customer ID isEmpty: ${customerId.isEmpty}');
+        debugPrint('Raw customer ID: "$customerId"');
       }
 
       final response = await http.post(

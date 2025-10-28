@@ -68,6 +68,15 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       initialRoute: start,
+      theme: ThemeData(
+        // Add font fallback configuration for better Rupee symbol support
+        fontFamily: 'Roboto',
+        textTheme: const TextTheme().apply(
+          fontFamilyFallback: ['Noto Sans', 'Arial', 'sans-serif'],
+        ),
+        // Ensure proper text rendering for currency symbols
+        useMaterial3: true,
+      ),
       routes: {
         '/login': (context) => const LoginPage(),
         '/home':  (context) => const HomeScreen(),

@@ -28,8 +28,18 @@ class Customer {
     String _getString(List<String> keys, [String defaultValue = '']) {
       for (final key in keys) {
         if (json.containsKey(key) && json[key] != null) {
-          return json[key].toString();
+          final value = json[key].toString();
+          // Debug logging for customer ID extraction
+          if (keys.contains('id') || keys.contains('customer_id') || keys.contains('custid')) {
+            print('DEBUG: Found customer ID field "$key" with value "$value"');
+          }
+          return value;
         }
+      }
+      // Debug logging when no field is found
+      if (keys.contains('id') || keys.contains('customer_id') || keys.contains('custid')) {
+        print('DEBUG: No customer ID found in fields: $keys');
+        print('DEBUG: Available JSON keys: ${json.keys.toList()}');
       }
       return defaultValue;
     }

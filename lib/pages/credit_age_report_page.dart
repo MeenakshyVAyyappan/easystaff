@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:eazystaff/models/customer.dart';
 import 'package:eazystaff/services/customer_service.dart';
+import 'package:eazystaff/services/auth_service.dart';
+import 'package:eazystaff/services/pdf_service.dart';
 import 'package:intl/intl.dart';
 
 class CreditAgeReportPage extends StatefulWidget {
@@ -30,24 +32,36 @@ class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
     });
 
     try {
-      // Use real API with parameters
-      final transactions = await CustomerService.getCreditAgeReport(
+      print('=== CREDIT AGE REPORT PAGE DEBUG ===');
+      print('DEBUG: Customer object: ${widget.customer.name}');
+      print('DEBUG: Customer ID: "${widget.customer.id}" (type: ${widget.customer.id.runtimeType}, length: ${widget.customer.id.length})');
+      print('DEBUG: Customer ID isEmpty: ${widget.customer.id.isEmpty}');
+      print('DEBUG: Parameters - Days: $_numberOfDays, Condition: $_condition');
+
+      // Use real API with parameters and financial year fallback
+      final transactions = await CustomerService.getCreditAgeReportWithFallback(
         customerId: widget.customer.id,
-        financialYearId: '2', // Default financial year ID
         numberOfDays: _numberOfDays,
         condition: _condition,
       );
+
+      print('DEBUG: Loaded ${transactions.length} credit transactions');
+
       setState(() {
         _creditTransactions = transactions;
         _isLoading = false;
       });
     } catch (e) {
+      print('DEBUG: Error loading credit age report: $e');
       setState(() {
         _isLoading = false;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading credit age report: $e')),
+          SnackBar(
+            content: Text('Error loading credit age report: $e'),
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
     }
@@ -55,6 +69,40 @@ class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
 
   int _calculateDaysOld(DateTime transactionDate) {
     return DateTime.now().difference(transactionDate).inDays;
+  }
+
+  Future<void> _shareCreditAgeReport() async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Generate and share PDF
+      await PdfService.generateAndShareCreditAgeReport(
+        customer: widget.customer,
+        creditTransactions: _creditTransactions,
+        numberOfDays: _numberOfDays,
+        condition: _condition,
+      );
+
+      // Hide loading indicator
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      // Hide loading indicator
+      if (mounted) Navigator.pop(context);
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating PDF: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -177,6 +225,24 @@ class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              // Centered Share Button
+              if (_creditTransactions.isNotEmpty)
+                Center(
+                  child: ElevatedButton.icon(
+                    onPressed: _shareCreditAgeReport,
+                    icon: const Icon(Icons.picture_as_pdf, size: 18),
+                    label: const Text('Share as PDF', style: TextStyle(fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -185,10 +251,50 @@ class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _creditTransactions.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No outstanding credit found',
-                        style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.schedule_outlined,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No outstanding credit found',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'This customer has no outstanding\ncredit transactions for the selected criteria.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _numberOfDays = 0; // Show all transactions
+                                _condition = 'greater_than';
+                              });
+                              _loadCreditTransactions();
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Show All'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   : RefreshIndicator(

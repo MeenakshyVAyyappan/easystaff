@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:eazystaff/services/auth_service.dart';
 import 'package:eazystaff/services/dashboard_service.dart';
 import 'package:eazystaff/utilitis/location_helper.dart';
+import 'package:eazystaff/pages/location_management_page.dart';
 
 
 class DashboardPage extends StatefulWidget {
@@ -90,47 +91,19 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _onEnableLocation() async {
-    final ok = await LocationHelper.ensurePermission();
-    if (!ok) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Location permission denied.')),
-      );
-      return;
-    }
-    try {
-      final addr = await LocationHelper.getPrettyAddress();
-      if (addr != null) {
-        await AuthService.saveLocation(addr);
-        setState(() {
-          _location = addr;
-          if (_data != null) {
-            _data = DashboardData(
-              displayName: _data!.displayName,
-              designation: _data!.designation,
-              department: _data!.department,
-              officeCode: _data!.officeCode,
-              savedLocation: addr,
-              monthCollections: _data!.monthCollections,
-              monthCustomers: _data!.monthCustomers,
-              monthVisits: _data!.monthVisits,
-              pendingAmount: _data!.pendingAmount,
-              todays: _data!.todays,
-            );
-          }
-        });
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Location saved: $addr')),
-        );
-
-        // If you later get a “save location” API, call it here.
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to get location: $e')),
-      );
+    // Navigate to the location management page
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const LocationManagementPage(),
+      ),
+    );
+    
+    // If location was updated, refresh the dashboard
+    if (result == true) {
+      final savedLocation = await AuthService.loadLocation() ?? '';
+      setState(() => _location = savedLocation);
+      await _loadDashboard();
     }
   }
 
@@ -159,7 +132,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
           const SizedBox(height: 16),
 
-          // 2) Enable location card (orange)
+          // 2) Enable location card (orange) - Enhanced with Google Maps
           _NewLocationCard(
             isEnabled: d.savedLocation.isNotEmpty,
             address: d.savedLocation,
@@ -177,15 +150,17 @@ class _DashboardPageState extends State<DashboardPage> {
 
           const SizedBox(height: 16),
 
-          // 4) Current month summary (purple) - Collections and Pending Amount only
+          // 4) Current month summary (purple) - Collections, Pending Amount, Sales Orders
           _NewMonthSummary(
             collections: d.monthCollections,
             pendingAmount: d.pendingAmount,
+            salesOrderCount: d.salesOrderCount,
+            salesOrderAmount: d.salesOrderAmount,
           ),
 
           const SizedBox(height: 16),
 
-          // 4) Today’s transactions (green)
+          // 4) Today's transactions (green)
           _NewTodayTransactions(list: d.todays),
         ],
       ),
@@ -413,27 +388,61 @@ class _NewLocationCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Enable Location Access',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.location_on,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Location Access',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  isEnabled ? address : 'Required for attendance tracking',
+                  isEnabled
+                    ? address.length > 50
+                      ? '${address.substring(0, 50)}...'
+                      : address
+                    : 'Tap to enable location with Google Maps',
                   style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 14,
                   ),
                 ),
+                if (isEnabled) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.map,
+                        color: Colors.white70,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'View on Google Maps',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(width: 12),
-          ElevatedButton(
+          ElevatedButton.icon(
             onPressed: onEnable,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
@@ -442,7 +451,11 @@ class _NewLocationCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: Text(isEnabled ? 'Update' : 'Enable'),
+            icon: Icon(
+              isEnabled ? Icons.edit_location : Icons.location_searching,
+              size: 18,
+            ),
+            label: Text(isEnabled ? 'Update' : 'Enable'),
           ),
         ],
       ),
@@ -453,7 +466,14 @@ class _NewLocationCard extends StatelessWidget {
 class _NewMonthSummary extends StatelessWidget {
   final double collections;
   final double pendingAmount;
-  const _NewMonthSummary({required this.collections, required this.pendingAmount});
+  final int salesOrderCount;
+  final double salesOrderAmount;
+  const _NewMonthSummary({
+    required this.collections,
+    required this.pendingAmount,
+    required this.salesOrderCount,
+    required this.salesOrderAmount,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -464,11 +484,23 @@ class _NewMonthSummary extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
       ),
       padding: const EdgeInsets.all(20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
-          _buildStatColumn('₹${collections.toStringAsFixed(2)}', 'Collections'),
-          _buildStatColumn('₹${pendingAmount.toStringAsFixed(2)}', 'Pending Amount'),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatColumn('₹${collections.toStringAsFixed(2)}', 'Collections'),
+              _buildStatColumn('₹${pendingAmount.toStringAsFixed(2)}', 'Pending Amount'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatColumn('$salesOrderCount', 'Sales Orders'),
+              _buildStatColumn('₹${salesOrderAmount.toStringAsFixed(2)}', 'Sales Amount'),
+            ],
+          ),
         ],
       ),
     );

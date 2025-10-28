@@ -62,75 +62,109 @@ class _SalesOrderPageState extends State<SalesOrderPage> {
           builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text('Add Product'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<Stock>(
-                    value: selectedStock,
-                    decoration: const InputDecoration(
-                      labelText: 'Select Product',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: _stocks.map((stock) {
-                      return DropdownMenuItem(
-                        value: stock,
-                        child: Text('${stock.productName} (${stock.stockCount} available)'),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setDialogState(() {
-                        selectedStock = value;
-                        priceController.text = value?.mrp.toString() ?? '';
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: quantityController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Quantity',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: priceController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Unit Price',
-                      prefixText: '₹ ',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    if (selectedStock != null &&
-                        quantityController.text.isNotEmpty &&
-                        priceController.text.isNotEmpty) {
-                      final quantity = int.tryParse(quantityController.text) ?? 0;
-                      final price = double.tryParse(priceController.text) ?? 0;
-                      
-                      if (quantity > 0 && price > 0) {
-                        setState(() {
-                          _orderItems.add(OrderItem(
-                            stock: selectedStock!,
-                            quantity: quantity,
-                            unitPrice: price,
-                          ));
+              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<Stock>(
+                      initialValue: selectedStock,
+                      decoration: const InputDecoration(
+                        labelText: 'Select Product',
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      isExpanded: true,
+                      items: _stocks.map((stock) {
+                        return DropdownMenuItem(
+                          value: stock,
+                          child: Text(
+                            '${stock.productName} (${stock.stockCount} available)',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selectedStock = value;
+                          priceController.text = value?.mrp.toString() ?? '';
                         });
-                        Navigator.of(context).pop();
-                      }
-                    }
-                  },
-                  child: const Text('Add'),
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: quantityController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Quantity',
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: priceController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Unit Price',
+                              prefixText: '₹ ',
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+              actions: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          if (selectedStock != null &&
+                              quantityController.text.isNotEmpty &&
+                              priceController.text.isNotEmpty) {
+                            final quantity = int.tryParse(quantityController.text) ?? 0;
+                            final price = double.tryParse(priceController.text) ?? 0;
+
+                            if (quantity > 0 && price > 0) {
+                              setState(() {
+                                _orderItems.add(OrderItem(
+                                  stock: selectedStock!,
+                                  quantity: quantity,
+                                  unitPrice: price,
+                                ));
+                              });
+                              Navigator.of(context).pop();
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: const Text('Add'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             );
@@ -201,151 +235,190 @@ class _SalesOrderPageState extends State<SalesOrderPage> {
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
       ),
-      body: Form(
-        key: _formKey,
-        child: Column(
-          children: [
-            // Customer Selection
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.grey[50],
-              child: DropdownButtonFormField<Customer>(
-                value: _selectedCustomer,
-                decoration: const InputDecoration(
-                  labelText: 'Select Customer *',
-                  border: OutlineInputBorder(),
-                  filled: true,
-                  fillColor: Colors.white,
+      body: SafeArea(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              // Customer Selection
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.grey[50],
+                child: DropdownButtonFormField<Customer>(
+                  initialValue: _selectedCustomer,
+                  decoration: const InputDecoration(
+                    labelText: 'Select Customer *',
+                    border: OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                  items: _customers.map((customer) {
+                    return DropdownMenuItem(
+                      value: customer,
+                      child: Text(
+                        '${customer.name} (${customer.areaName})',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedCustomer = value;
+                    });
+                  },
+                  validator: (value) {
+                    if (value == null) {
+                      return 'Please select a customer';
+                    }
+                    return null;
+                  },
                 ),
-                items: _customers.map((customer) {
-                  return DropdownMenuItem(
-                    value: customer,
-                    child: Text('${customer.name} (${customer.areaName})'),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCustomer = value;
-                  });
-                },
-                validator: (value) {
-                  if (value == null) {
-                    return 'Please select a customer';
-                  }
-                  return null;
-                },
               ),
-            ),
-            // Order Items
-            Expanded(
-              child: Column(
-                children: [
-                  // Header
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
+              // Order Items Section
+              Expanded(
+                child: Column(
+                  children: [
+                    // Header with responsive layout
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Order Items',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            onPressed: _addOrderItem,
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text(
+                              'Add',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              minimumSize: const Size(0, 36),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Items List with proper constraints
+                    Expanded(
+                      child: _orderItems.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Text(
+                                  'No products added yet\nTap "Add" to start',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              itemCount: _orderItems.length,
+                              itemBuilder: (context, index) {
+                                final item = _orderItems[index];
+                                return _buildOrderItemCard(item, index);
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              // Total and Submit - Fixed bottom section
+              Container(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  16 + MediaQuery.of(context).padding.bottom,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  border: Border(top: BorderSide(color: Colors.grey[300]!)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Order Items',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                        const Flexible(
+                          child: Text(
+                            'Total Amount:',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                        ElevatedButton.icon(
-                          onPressed: _addOrderItem,
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add Product'),
+                        Flexible(
+                          child: Text(
+                            '₹${_totalAmount.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  // Items List
-                  Expanded(
-                    child: _orderItems.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'No products added yet\nTap "Add Product" to start',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: _orderItems.length,
-                            itemBuilder: (context, index) {
-                              final item = _orderItems[index];
-                              return _buildOrderItemCard(item, index);
-                            },
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: _isSubmitting ? null : _submitOrder,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                  ),
-                ],
-              ),
-            ),
-            // Total and Submit
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                border: Border(top: BorderSide(color: Colors.grey[300]!)),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Total Amount:',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
                         ),
-                      ),
-                      Text(
-                        '₹${_totalAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _submitOrder,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : const Text(
+                                'Place Order',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            )
-                          : const Text(
-                              'Place Order',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -354,31 +427,88 @@ class _SalesOrderPageState extends State<SalesOrderPage> {
   Widget _buildOrderItemCard(OrderItem item, int index) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        title: Text(
-          item.stock.productName,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Column(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Quantity: ${item.quantity}'),
-            Text('Unit Price: ₹${item.unitPrice.toStringAsFixed(2)}'),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '₹${item.totalPrice.toStringAsFixed(2)}',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+            // Product name and delete button
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    item.stock.productName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                  onPressed: () => _removeOrderItem(index),
+                  padding: const EdgeInsets.all(4),
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                ),
+              ],
             ),
-            IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
-              onPressed: () => _removeOrderItem(index),
+            const SizedBox(height: 8),
+            // Quantity, unit price, and total in responsive layout
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Qty: ${item.quantity}',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Unit: ₹${item.unitPrice.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  flex: 1,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text(
+                        'Total',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      Text(
+                        '₹${item.totalPrice.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.green,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),

@@ -14,6 +14,8 @@ class DashboardData {
   final int monthCustomers;
   final int monthVisits;
   final double pendingAmount;         // pending amount from API
+  final int salesOrderCount;          // sales order count from API
+  final double salesOrderAmount;      // sales order amount from API
   final List<TodayTxn> todays;        // today’s transactions
 
   DashboardData({
@@ -26,6 +28,8 @@ class DashboardData {
     required this.monthCustomers,
     required this.monthVisits,
     required this.pendingAmount,
+    required this.salesOrderCount,
+    required this.salesOrderAmount,
     required this.todays,
   });
 
@@ -104,6 +108,9 @@ class DashboardData {
     final pendingAmount = _d(['pendingamt','pending_amount','pending']);
     final salesOrderAmount = _d(['salesorderamt','sales_order_amount','salesorder_amt']);
 
+    // Ensure salesOrderCount is never null
+    final salesOrderCount = _i(['salesordercnt','sales_order_count','salesorder_count']);
+
     if (kDebugMode) {
       debugPrint('Parsed dashboard values:');
       debugPrint('  collections=$collections (from collectionamt)');
@@ -111,6 +118,7 @@ class DashboardData {
       debugPrint('  customers=$customers (from salesordercnt)');
       debugPrint('  visits=$visits (from visitcnt)');
       debugPrint('  pendingAmount=$pendingAmount (from pendingamt)');
+      debugPrint('  salesOrderCount=$salesOrderCount (from salesordercnt)');
       debugPrint('  salesOrderAmount=$salesOrderAmount (from salesorderamt)');
       debugPrint('  today transactions count: ${today.length}');
       debugPrint('=== END DASHBOARD DATA PARSING ===');
@@ -126,6 +134,8 @@ class DashboardData {
       monthCustomers  : customers,
       monthVisits     : visits,
       pendingAmount   : pendingAmount,
+      salesOrderCount : salesOrderCount, // Using sales order count from API
+      salesOrderAmount: salesOrderAmount,
       todays: today.map((e) => TodayTxn.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
