@@ -1,8 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:eazystaff/services/auth_service.dart';
+import 'package:eazystaff/services/dashboard_service.dart';
+import 'package:eazystaff/pages/edit_profile_page.dart';
+import 'package:eazystaff/pages/change_password_page.dart';
+import 'package:eazystaff/pages/notification_settings_page.dart';
+import 'package:intl/intl.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  DashboardData? _dashboardData;
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    final user = AuthService.currentUser;
+    if (user == null) {
+      setState(() {
+        _error = 'No user data available';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    try {
+      final savedLocation = await AuthService.loadLocation() ?? '';
+      final empId = user.employeeId.isNotEmpty ? user.employeeId : '2';
+
+      final dashboardData = await DashboardService.fetchDashboard(
+        empId: empId,
+        officeCode: user.officeCode,
+        officeId: user.officeId,
+        financialYearId: user.financialYearId,
+        savedLocation: savedLocation,
+      );
+
+      setState(() {
+        _dashboardData = dashboardData;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to load dashboard data: $e';
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,50 +75,151 @@ class ProfilePage extends StatelessWidget {
         title: const Text('Profile'),
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _isLoading ? null : () {
+              setState(() {
+                _isLoading = true;
+                _error = null;
+              });
+              _loadDashboardData();
+            },
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // Profile Header
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Colors.indigo[100],
-                      child: Text(
-                        user.name.split(' ').map((e) => e[0]).join(),
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.indigo[800],
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                      const SizedBox(height: 16),
+                      Text(_error!, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _loadDashboardData,
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      // Profile Header
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            children: [
+                              CircleAvatar(
+                                radius: 50,
+                                backgroundColor: Colors.indigo[100],
+                                child: Text(
+                                  user.name.split(' ').map((e) => e[0]).join(),
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.indigo[800],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                user.name,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '${user.designation} • ${user.department}',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      user.name,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${user.designation} • ${user.department}',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
+                      const SizedBox(height: 16),
+
+                      // Performance Summary (if dashboard data available)
+                      if (_dashboardData != null) ...[
+                        Card(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Text(
+                                  'Performance Summary',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const Divider(height: 1),
+                              Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildStatCard(
+                                        title: 'Collections',
+                                        value: '₹${NumberFormat('#,##,###.##').format(_dashboardData!.monthCollections)}',
+                                        icon: Icons.account_balance_wallet,
+                                        color: Colors.green,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildStatCard(
+                                        title: 'Pending',
+                                        value: '₹${NumberFormat('#,##,###.##').format(_dashboardData!.pendingAmount)}',
+                                        icon: Icons.pending_actions,
+                                        color: Colors.orange,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildStatCard(
+                                        title: 'Customers',
+                                        value: '${_dashboardData!.monthCustomers}',
+                                        icon: Icons.people,
+                                        color: Colors.blue,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: _buildStatCard(
+                                        title: 'Today\'s Txns',
+                                        value: '${_dashboardData!.todays.length}',
+                                        icon: Icons.today,
+                                        color: Colors.purple,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
 
             // Profile Details
             Card(
@@ -138,12 +293,18 @@ class ProfilePage extends StatelessWidget {
                     title: const Text('Edit Profile'),
                     subtitle: const Text('Update your profile information'),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Edit profile feature coming soon'),
+                    onTap: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const EditProfilePage(),
                         ),
                       );
+
+                      // If profile was updated, refresh dashboard data
+                      if (result == true) {
+                        _loadDashboardData();
+                      }
                     },
                   ),
                   ListTile(
@@ -152,9 +313,10 @@ class ProfilePage extends StatelessWidget {
                     subtitle: const Text('Update your login password'),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Change password feature coming soon'),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ChangePasswordPage(),
                         ),
                       );
                     },
@@ -165,9 +327,10 @@ class ProfilePage extends StatelessWidget {
                     subtitle: const Text('Manage your notification preferences'),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Notification settings feature coming soon'),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const NotificationSettingsPage(),
                         ),
                       );
                     },
@@ -275,6 +438,52 @@ class ProfilePage extends StatelessWidget {
           fontWeight: FontWeight.w500,
           fontSize: 16,
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }

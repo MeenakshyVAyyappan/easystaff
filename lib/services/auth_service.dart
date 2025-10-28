@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:eazystaff/services/logging_service.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -46,10 +47,20 @@ class AppUser {
       return fallback;
     }
 
+    final empId = _s(['employee_id', 'emp_id', 'empid', 'id', 'userid', 'user_id', 'eid'], '');
+
+    if (kDebugMode) {
+      debugPrint('=== AppUser.fromJson DEBUG ===');
+      debugPrint('Raw JSON keys: ${j.keys.toList()}');
+      debugPrint('Extracted employeeId: "$empId"');
+      debugPrint('Full user data: $j');
+      debugPrint('=== END AppUser.fromJson DEBUG ===');
+    }
+
     return AppUser(
       name:        _s(['name', 'full_name', 'employee_name'], 'User'),
       username:    _s(['username', 'user', 'uname'], ''),
-      employeeId:  _s(['employee_id', 'emp_id', 'empid', 'id'], ''),
+      employeeId:  empId,
       department:  _s(['department', 'dept'], ''),
       designation: _s(['designation', 'role', 'title'], ''),
       officeCode:  _s(['office_code', 'office', 'officecode'], ''),
@@ -95,16 +106,28 @@ static Future<String?> loadLocation() async {
 
   // ---- Add: hydrate cached user at app start ----
   static Future<void> hydrate() async {
-    final raw = await _storage.read(key: 'user');
-    if (raw != null && raw.isNotEmpty) {
-      try {
-        final map = jsonDecode(raw);
-        if (map is Map<String, dynamic>) {
-          _currentUserCache = AppUser.fromJson(map);
+    try {
+      LoggingService.debug('Starting user hydration from secure storage', tag: 'AuthService');
+      final raw = await _storage.read(key: 'user');
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          final map = jsonDecode(raw);
+          if (map is Map<String, dynamic>) {
+            _currentUserCache = AppUser.fromJson(map);
+            LoggingService.info('Successfully hydrated user: ${_currentUserCache?.name}', tag: 'AuthService');
+          }
+        } catch (e) {
+          LoggingService.error('Failed to parse cached user data', tag: 'AuthService', error: e);
+          // Clear corrupted cache
+          await _storage.delete(key: 'user');
+          LoggingService.info('Cleared corrupted user cache', tag: 'AuthService');
         }
-      } catch (_) {
-        // ignore bad cache
+      } else {
+        LoggingService.debug('No cached user data found', tag: 'AuthService');
       }
+    } catch (e) {
+      LoggingService.error('Failed to read from secure storage', tag: 'AuthService', error: e);
+      // Continue without cached user
     }
   }
 
@@ -114,6 +137,12 @@ static Future<String?> loadLocation() async {
     required String username,
     required String password,
   }) async {
+    LoggingService.logApiCall('$_baseUrl$_loginPath', params: {
+      'officecode': officeCode,
+      'username': username,
+      'password': '***', // Don't log actual password
+    });
+
     final uri = Uri.parse('$_baseUrl$_loginPath');
 
     final headers = <String, String>{
@@ -132,12 +161,7 @@ static Future<String?> loadLocation() async {
           .post(uri, headers: headers, body: body)
           .timeout(const Duration(seconds: 20));
 
-      if (kDebugMode) {
-        debugPrint('Login status: ${resp.statusCode}');
-        debugPrint('Content-Type: ${resp.headers['content-type']}');
-        debugPrint('Response: ${resp.body}');
-        debugPrint('Set-Cookie: ${resp.headers['set-cookie']}');
-      }
+      LoggingService.logApiResponse('$_baseUrl$_loginPath', resp.statusCode, response: resp.body);
 
       final setCookie = resp.headers['set-cookie'];
       if (setCookie != null) {
@@ -174,12 +198,24 @@ static Future<String?> loadLocation() async {
 
       // ---- [NEW] persist & cache user if present ----
       if (userMap != null) {
+        if (kDebugMode) {
+          debugPrint('=== LOGIN USER EXTRACTION ===');
+          debugPrint('User data from API: $userMap');
+        }
         final user = AppUser.fromJson(userMap);
         _currentUserCache = user;
         await _storage.write(key: 'user', value: jsonEncode(user.toJson()));
+        if (kDebugMode) {
+          debugPrint('Cached user: name=${user.name}, empId=${user.employeeId}, username=${user.username}');
+          debugPrint('=== END LOGIN USER EXTRACTION ===');
+        }
       } else {
         // If your API doesn't return a user object on login but you still
         // know some fields, you can build it from inputs:
+        if (kDebugMode) {
+          debugPrint('⚠️ WARNING: Login API did not return user data!');
+          debugPrint('Using fallback user creation with username: $username');
+        }
         final fallback = AppUser(
           name: username, // or 'User'
           username: username,
@@ -195,10 +231,13 @@ static Future<String?> loadLocation() async {
         await _storage.write(key: 'user', value: jsonEncode(fallback.toJson()));
       }
 
+      LoggingService.info('Login successful for user: $username', tag: 'AuthService');
       return true;
-    } on ApiException {
+    } on ApiException catch (e) {
+      LoggingService.logApiError('$_baseUrl$_loginPath', e);
       rethrow;
-    } catch (e) {
+    } catch (e, stackTrace) {
+      LoggingService.logApiError('$_baseUrl$_loginPath', e, stackTrace: stackTrace);
       throw ApiException('Network or server error. ${e.toString()}');
     }
   }

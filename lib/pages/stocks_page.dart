@@ -149,6 +149,7 @@ class _StocksPageState extends State<StocksPage> {
           children: [
             Text('Category: ${stock.category}'),
             Text('Brand: ${stock.brand}'),
+            Text('Batch: ${stock.batchNo}'),
             Text('MRP: ₹${stock.mrp.toStringAsFixed(2)}'),
           ],
         ),
@@ -157,7 +158,7 @@ class _StocksPageState extends State<StocksPage> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              '${stock.stockCount}',
+              stock.stockQty.toStringAsFixed(1),
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -199,10 +200,13 @@ class _StocksPageState extends State<StocksPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildDetailRow('Product ID', stock.productId),
               _buildDetailRow('Category', stock.category),
               _buildDetailRow('Brand', stock.brand),
+              _buildDetailRow('Batch No', stock.batchNo),
               _buildDetailRow('MRP', '₹${stock.mrp.toStringAsFixed(2)}'),
-              _buildDetailRow('Stock Count', '${stock.stockCount} units'),
+              _buildDetailRow('Est. Stock', '${stock.estStock.toStringAsFixed(1)} units'),
+              _buildDetailRow('Current Stock', '${stock.stockQty.toStringAsFixed(1)} units'),
             ],
           ),
           actions: [

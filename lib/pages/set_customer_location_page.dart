@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:eazystaff/models/customer.dart';
 import 'package:eazystaff/services/customer_service.dart';
+import 'package:eazystaff/services/logging_service.dart';
 import 'package:eazystaff/utilitis/location_helper.dart';
 
 class SetCustomerLocationPage extends StatefulWidget {
@@ -20,7 +21,7 @@ class SetCustomerLocationPage extends StatefulWidget {
 }
 
 class _SetCustomerLocationPageState extends State<SetCustomerLocationPage> {
-  late GoogleMapController mapController;
+  GoogleMapController? mapController;
   LatLng? selectedLocation;
   Set<Marker> markers = {};
   bool isLoading = false;
@@ -90,6 +91,13 @@ class _SetCustomerLocationPageState extends State<SetCustomerLocationPage> {
       return;
     }
 
+    LoggingService.logUserAction('Save Customer Location', context: {
+      'customerId': widget.customer.id,
+      'customerName': widget.customer.name,
+      'latitude': selectedLocation!.latitude,
+      'longitude': selectedLocation!.longitude,
+    });
+
     setState(() {
       isLoading = true;
       errorMessage = null;
@@ -103,6 +111,8 @@ class _SetCustomerLocationPageState extends State<SetCustomerLocationPage> {
       );
 
       if (success) {
+        LoggingService.info('Customer location saved successfully', tag: 'SetLocationPage');
+
         // Update customer object
         final updatedCustomer = widget.customer.copyWith(
           latitude: selectedLocation!.latitude,
@@ -125,13 +135,15 @@ class _SetCustomerLocationPageState extends State<SetCustomerLocationPage> {
           Navigator.pop(context, updatedCustomer);
         }
       } else {
+        LoggingService.warning('Customer location save returned false', tag: 'SetLocationPage');
         setState(() {
-          errorMessage = 'Failed to save location. Please try again.';
+          errorMessage = 'Unable to save location. Please try again.';
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      LoggingService.error('Exception while saving customer location', tag: 'SetLocationPage', error: e, stackTrace: stackTrace);
       setState(() {
-        errorMessage = 'Error: $e';
+        errorMessage = 'Error saving location: ${e.toString()}';
       });
     } finally {
       setState(() {
@@ -142,7 +154,7 @@ class _SetCustomerLocationPageState extends State<SetCustomerLocationPage> {
 
   @override
   void dispose() {
-    mapController.dispose();
+    mapController?.dispose();
     super.dispose();
   }
 

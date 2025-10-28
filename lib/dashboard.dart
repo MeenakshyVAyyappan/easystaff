@@ -1,5 +1,6 @@
 // lib/dashboard.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:eazystaff/services/auth_service.dart';
 import 'package:eazystaff/services/dashboard_service.dart';
 import 'package:eazystaff/utilitis/location_helper.dart';
@@ -15,6 +16,8 @@ class _DashboardPageState extends State<DashboardPage> {
   DashboardData? _data;
   bool _loading = true;
   String _location = '';
+  DateTime _startDate = DateTime.now().subtract(const Duration(days: 30));
+  DateTime _endDate = DateTime.now();
 
   @override
   void initState() {
@@ -28,6 +31,14 @@ class _DashboardPageState extends State<DashboardPage> {
     await _loadDashboard();
   }
 
+  void _onDateRangeChanged(DateTime startDate, DateTime endDate) {
+    setState(() {
+      _startDate = startDate;
+      _endDate = endDate;
+    });
+    _loadDashboard(); // Reload dashboard with new date range
+  }
+
   Future<void> _loadDashboard() async {
     setState(() => _loading = true);
     final u = AuthService.currentUser;
@@ -36,13 +47,34 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
 
-    // API needs empid — use employeeId if you have it, else fallback to username
-    final empId = (u.employeeId.isNotEmpty) ? u.employeeId : u.username;
+    // Based on your Postman example, use empid: 2
+    // For WF-01 employee, the empid should be 2
+    String empId = '2'; // Default for WF-01 employee
+
+    // If you have a specific employee ID mapping, use it
+    if (u.employeeId.isNotEmpty && u.employeeId != 'WF-01') {
+      empId = u.employeeId;
+    }
+
+    if (kDebugMode) {
+      debugPrint('=== DASHBOARD LOAD DEBUG ===');
+      debugPrint('User: ${u.username}');
+      debugPrint('Office Code: ${u.officeCode}');
+      debugPrint('Office ID: ${u.officeId}');
+      debugPrint('Financial Year ID: ${u.financialYearId}');
+      debugPrint('Employee ID: $empId');
+      debugPrint('=== END DASHBOARD LOAD DEBUG ===');
+    }
 
     try {
       final d = await DashboardService.fetchDashboard(
         empId: empId,
+        officeCode: u.officeCode,
+        officeId: u.officeId,
+        financialYearId: u.financialYearId,
         savedLocation: _location,
+        startDate: _startDate,
+        endDate: _endDate,
       );
       setState(() {
         _data = d;
@@ -82,6 +114,7 @@ class _DashboardPageState extends State<DashboardPage> {
               monthCollections: _data!.monthCollections,
               monthCustomers: _data!.monthCustomers,
               monthVisits: _data!.monthVisits,
+              pendingAmount: _data!.pendingAmount,
               todays: _data!.todays,
             );
           }
@@ -111,109 +144,243 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     final d = _data!;
-    // ---- Replace the hard-coded tiles with these dynamic values ----
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // 1) User card (violet)
-          _UserCard(
+          // 1) User card (purple gradient)
+          _NewUserCard(
             name: d.displayName.isNotEmpty ? d.displayName : 'User',
             designation: d.designation,
             department: d.department,
             officeCode: d.officeCode,
-            location: d.savedLocation, // show saved (local) location
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
           // 2) Enable location card (orange)
-          _LocationCard(
+          _NewLocationCard(
             isEnabled: d.savedLocation.isNotEmpty,
             address: d.savedLocation,
             onEnable: _onEnableLocation,
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
-          // 3) Current month summary (purple)
-          _MonthSummary(
-            collections: d.monthCollections,
-            customers: d.monthCustomers,
-            visits: d.monthVisits,
+          // 3) Date Range Filter
+          _DateRangeFilter(
+            startDate: _startDate,
+            endDate: _endDate,
+            onDateRangeChanged: _onDateRangeChanged,
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+
+          // 4) Current month summary (purple) - Collections and Pending Amount only
+          _NewMonthSummary(
+            collections: d.monthCollections,
+            pendingAmount: d.pendingAmount,
+          ),
+
+          const SizedBox(height: 16),
 
           // 4) Today’s transactions (green)
-          _TodayTransactions(list: d.todays),
+          _NewTodayTransactions(list: d.todays),
         ],
       ),
     );
   }
 }
 
-// ------- UI widgets (simple, bind to your existing design) -------
+// ------- New UI widgets matching the target design -------
 
-class _UserCard extends StatelessWidget {
-  final String name, designation, department, officeCode, location;
-  const _UserCard({
+class _DateRangeFilter extends StatelessWidget {
+  final DateTime startDate;
+  final DateTime endDate;
+  final Function(DateTime, DateTime) onDateRangeChanged;
+
+  const _DateRangeFilter({
+    required this.startDate,
+    required this.endDate,
+    required this.onDateRangeChanged,
+  });
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  Future<void> _selectStartDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: startDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && picked != startDate) {
+      onDateRangeChanged(picked, endDate);
+    }
+  }
+
+  Future<void> _selectEndDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: endDate,
+      firstDate: startDate,
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && picked != endDate) {
+      onDateRangeChanged(startDate, picked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Filter by Date Range',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _selectStartDate(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatDate(startDate),
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text('to', style: TextStyle(color: Colors.grey)),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _selectEndDate(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatDate(endDate),
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NewUserCard extends StatelessWidget {
+  final String name, designation, department, officeCode;
+  const _NewUserCard({
     required this.name,
     required this.designation,
     required this.department,
     required this.officeCode,
-    required this.location,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: Colors.deepPurple.shade400,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 26,
-              backgroundColor: Colors.white,
-              child: Text(
-                _initials(name),
-                style: TextStyle(
-                  color: Colors.deepPurple.shade700,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: DefaultTextStyle(
-                style: const TextStyle(color: Colors.white),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    if (designation.isNotEmpty || department.isNotEmpty)
-                      Text('${designation}${designation.isNotEmpty && department.isNotEmpty ? ' • ' : ''}${department}',
-                          style: const TextStyle(color: Colors.white70)),
-                    if (officeCode.isNotEmpty)
-                      Text('Office: $officeCode', style: const TextStyle(color: Colors.white60, fontSize: 12)),
-                    if (location.isNotEmpty)
-                      Row(
-                        children: [
-                          const Icon(Icons.location_on, size: 14, color: Colors.white70),
-                          const SizedBox(width: 4),
-                          Flexible(child: Text(location, style: const TextStyle(color: Colors.white70, fontSize: 12))),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.purple.shade600, Colors.purple.shade400],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: Colors.white,
+            child: Text(
+              _initials(name),
+              style: TextStyle(
+                color: Colors.purple.shade700,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (designation.isNotEmpty)
+                  Text(
+                    designation,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -225,101 +392,166 @@ class _UserCard extends StatelessWidget {
   }
 }
 
-class _LocationCard extends StatelessWidget {
+class _NewLocationCard extends StatelessWidget {
   final bool isEnabled;
   final String address;
   final VoidCallback onEnable;
-  const _LocationCard({required this.isEnabled, required this.address, required this.onEnable});
+  const _NewLocationCard({required this.isEnabled, required this.address, required this.onEnable});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: Colors.orange.shade400,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: ListTile(
-        title: Text(isEnabled ? 'Location Enabled' : 'Enable Location Access',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        subtitle: Text(
-          isEnabled
-              ? address
-              : 'Required for attendance tracking',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        trailing: ElevatedButton(
-          onPressed: onEnable,
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.orange),
-          child: Text(isEnabled ? 'Update' : 'Enable'),
-        ),
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.orange.shade400,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Enable Location Access',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isEnabled ? address : 'Required for attendance tracking',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          ElevatedButton(
+            onPressed: onEnable,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.orange.shade600,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(isEnabled ? 'Update' : 'Enable'),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _MonthSummary extends StatelessWidget {
-  final int collections, customers, visits;
-  const _MonthSummary({required this.collections, required this.customers, required this.visits});
+class _NewMonthSummary extends StatelessWidget {
+  final double collections;
+  final double pendingAmount;
+  const _NewMonthSummary({required this.collections, required this.pendingAmount});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: Colors.purple.shade400,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _pill('Collections', '₹$collections'),
-            _pill('Customers', '$customers'),
-            _pill('Visits', '$visits'),
-          ],
-        ),
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.purple.shade500,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatColumn('₹${collections.toStringAsFixed(2)}', 'Collections'),
+          _buildStatColumn('₹${pendingAmount.toStringAsFixed(2)}', 'Pending Amount'),
+        ],
       ),
     );
   }
 
-  Widget _pill(String label, String value) {
+  Widget _buildStatColumn(String value, String label) {
     return Column(
       children: [
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.white70)),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 14,
+          ),
+        ),
       ],
     );
   }
 }
 
-class _TodayTransactions extends StatelessWidget {
+class _NewTodayTransactions extends StatelessWidget {
   final List<TodayTxn> list;
-  const _TodayTransactions({required this.list});
+  const _NewTodayTransactions({required this.list});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: Colors.teal.shade400,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.teal.shade400,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const ListTile(
-            title: Text('Today\'s Transactions', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-          ...list.map((t) => Container(
-                margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: ListTile(
-                  title: Text(t.party),
-                  subtitle: t.time.isNotEmpty ? Text(t.time) : null,
-                  trailing: Text('₹${t.amount}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              )),
-          if (list.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 16),
-              child: Text('No transactions today', style: TextStyle(color: Colors.white70)),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              'Today\'s Transactions',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
             ),
+          ),
+          if (list.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
+              child: Text(
+                'No transactions today',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                ),
+              ),
+            )
+          else
+            ...list.map((t) => Container(
+                  margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListTile(
+                    title: Text(t.party),
+                    subtitle: t.time.isNotEmpty ? Text(t.time) : null,
+                    trailing: Text(
+                      '₹${t.amount}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                )),
+          const SizedBox(height: 8),
         ],
       ),
     );

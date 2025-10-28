@@ -166,6 +166,7 @@ class Transaction {
   final double creditAmount;
   final double receiptAmount;
   final double balanceAmount;
+  final int noofdays; // Days outstanding from API
   final String? remarks;
 
   Transaction({
@@ -177,6 +178,7 @@ class Transaction {
     required this.creditAmount,
     required this.receiptAmount,
     required this.balanceAmount,
+    this.noofdays = 0,
     this.remarks,
   });
 
@@ -226,18 +228,45 @@ class Transaction {
       return DateTime.now(); // Fallback to current date
     }
 
+    // Helper function to safely get int values
+    int getInt(List<String> keys, [int defaultValue = 0]) {
+      for (final key in keys) {
+        if (json.containsKey(key) && json[key] != null) {
+          return int.tryParse(json[key].toString()) ?? defaultValue;
+        }
+      }
+      return defaultValue;
+    }
+
+    // Determine transaction type from alltype/alltypes field
+    String typeStr = getString(['type', 'txn_type', 'transaction_type', 'alltype', 'alltypes']).toLowerCase();
+    TransactionType txnType = TransactionType.sales;
+
+    if (typeStr.contains('receipt')) {
+      txnType = TransactionType.receipt;
+    } else if (typeStr.contains('return')) {
+      txnType = TransactionType.return_;
+    } else if (typeStr.contains('journal')) {
+      txnType = TransactionType.journal;
+    } else if (typeStr.contains('opening') || typeStr.contains('old balance')) {
+      txnType = TransactionType.openingBalance;
+    } else if (typeStr.contains('sales') || typeStr.contains('sale')) {
+      txnType = TransactionType.sales;
+    }
+
     return Transaction(
-      id: getString(['id', 'transaction_id', 'txn_id', 'invoiceid']),
+      id: getString(['id', 'transaction_id', 'txn_id', 'invoiceid', 'expincId']),
       customerId: getString(['customerId', 'customer_id', 'custid', 'customeraccountid']),
-      invoiceNo: getString(['invoiceNo', 'invoice_no', 'invoiceno', 'invoice', 'billno']),
+      invoiceNo: getString(['invoiceNo', 'invoice_no', 'invoiceno', 'invoice', 'billno', 'pinvoice']),
       date: parseDate(['date', 'invoice_date', 'txn_date', 'pur_date', 'bill_date']),
-      type: TransactionType.values.firstWhere(
-        (e) => e.toString().split('.').last.toLowerCase() == getString(['type', 'txn_type', 'transaction_type']).toLowerCase(),
-        orElse: () => TransactionType.sales,
-      ),
-      creditAmount: getDouble(['creditAmount', 'credit_amount', 'credit', 'debit', 'amount', 'totalamt']),
-      receiptAmount: getDouble(['receiptAmount', 'receipt_amount', 'receipt', 'payment', 'incout', 'incinit']),
-      balanceAmount: getDouble(['balanceAmount', 'balance_amount', 'balance', 'outstanding', 'currbalance']),
+      type: txnType,
+      // For credit amount: use incout1/incout for sales, or totalamt/nettotal for credit age report
+      creditAmount: getDouble(['creditAmount', 'credit_amount', 'credit', 'debit', 'amount', 'totalamt', 'nettotal', 'incout1', 'incout']),
+      // For receipt amount: use incin1/incin for receipts
+      receiptAmount: getDouble(['receiptAmount', 'receipt_amount', 'receipt', 'payment', 'incin1', 'incin']),
+      // For balance: use ob (opening balance) from statement, or balamt from credit age report
+      balanceAmount: getDouble(['balanceAmount', 'balance_amount', 'balance', 'outstanding', 'currbalance', 'balamt', 'ob']),
+      noofdays: getInt(['noofdays', 'no_of_days', 'days_outstanding', 'daysold']),
       remarks: getString(['remarks', 'remark', 'description', 'narration', 'msg']),
     );
   }
@@ -252,6 +281,7 @@ class Transaction {
       'creditAmount': creditAmount,
       'receiptAmount': receiptAmount,
       'balanceAmount': balanceAmount,
+      'noofdays': noofdays,
       'remarks': remarks,
     };
   }
@@ -337,40 +367,63 @@ enum PaymentType {
 
 class Stock {
   final String id;
+  final String productId;
   final String productName;
+  final String categoryId;
   final String category;
+  final String brandId;
   final String brand;
+  final String batchNo;
   final double mrp;
-  final int stockCount;
+  final double estStock;
+  final double stockQty;
 
   Stock({
     required this.id,
+    required this.productId,
     required this.productName,
+    required this.categoryId,
     required this.category,
+    required this.brandId,
     required this.brand,
+    required this.batchNo,
     required this.mrp,
-    required this.stockCount,
+    required this.estStock,
+    required this.stockQty,
   });
+
+  // Helper getter for backward compatibility
+  int get stockCount => stockQty.toInt();
 
   factory Stock.fromJson(Map<String, dynamic> json) {
     return Stock(
-      id: json['id'] ?? '',
-      productName: json['productName'] ?? '',
-      category: json['category'] ?? '',
-      brand: json['brand'] ?? '',
-      mrp: (json['mrp'] ?? 0).toDouble(),
-      stockCount: json['stockCount'] ?? 0,
+      id: json['stockid']?.toString() ?? '',
+      productId: json['productid']?.toString() ?? '',
+      productName: json['productname']?.toString() ?? '',
+      categoryId: json['categoryid']?.toString() ?? '',
+      category: json['category']?.toString() ?? '',
+      brandId: json['brandid']?.toString() ?? '',
+      brand: json['brand']?.toString() ?? '',
+      batchNo: json['batchno']?.toString() ?? '',
+      mrp: double.tryParse(json['mrp']?.toString() ?? '0') ?? 0.0,
+      estStock: double.tryParse(json['est_stock']?.toString() ?? '0') ?? 0.0,
+      stockQty: double.tryParse(json['stockqty']?.toString() ?? '0') ?? 0.0,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
-      'productName': productName,
+      'stockid': id,
+      'productid': productId,
+      'productname': productName,
+      'categoryid': categoryId,
       'category': category,
+      'brandid': brandId,
       'brand': brand,
-      'mrp': mrp,
-      'stockCount': stockCount,
+      'batchno': batchNo,
+      'mrp': mrp.toString(),
+      'est_stock': estStock.toString(),
+      'stockqty': stockQty.toString(),
     };
   }
 }

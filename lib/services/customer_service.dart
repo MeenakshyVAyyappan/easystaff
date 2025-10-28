@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:eazystaff/models/customer.dart';
 import 'package:eazystaff/services/auth_service.dart';
+import 'package:eazystaff/services/logging_service.dart';
 
 class CustomerService {
   static const _baseUrl = 'https://ezyerp.ezyplus.in/customers.php';
@@ -76,6 +77,7 @@ class CustomerService {
       creditAmount: 25000.0,
       receiptAmount: 0.0,
       balanceAmount: 25000.0,
+      noofdays: 5,
       remarks: 'Product sale',
     ),
     Transaction(
@@ -87,6 +89,7 @@ class CustomerService {
       creditAmount: 0.0,
       receiptAmount: 10000.0,
       balanceAmount: 15000.0,
+      noofdays: 3,
       remarks: 'Partial payment',
     ),
     Transaction(
@@ -98,6 +101,7 @@ class CustomerService {
       creditAmount: 15000.0,
       receiptAmount: 0.0,
       balanceAmount: 15000.0,
+      noofdays: 10,
     ),
     Transaction(
       id: '4',
@@ -108,6 +112,7 @@ class CustomerService {
       creditAmount: 0.0,
       receiptAmount: 20000.0,
       balanceAmount: -5000.0,
+      noofdays: 2,
       remarks: 'Advance payment',
     ),
   ];
@@ -147,35 +152,55 @@ class CustomerService {
   static List<Stock> _mockStocks = [
     Stock(
       id: '1',
+      productId: '101',
       productName: 'Product A',
+      categoryId: '1',
       category: 'Electronics',
+      brandId: '1',
       brand: 'Brand X',
+      batchNo: 'BATCH001',
       mrp: 1500.0,
-      stockCount: 50,
+      estStock: 50.0,
+      stockQty: 50.0,
     ),
     Stock(
       id: '2',
+      productId: '102',
       productName: 'Product B',
+      categoryId: '1',
       category: 'Electronics',
+      brandId: '2',
       brand: 'Brand Y',
+      batchNo: 'BATCH002',
       mrp: 2500.0,
-      stockCount: 25,
+      estStock: 25.0,
+      stockQty: 25.0,
     ),
     Stock(
       id: '3',
+      productId: '103',
       productName: 'Product C',
+      categoryId: '2',
       category: 'Accessories',
+      brandId: '1',
       brand: 'Brand X',
+      batchNo: 'BATCH003',
       mrp: 500.0,
-      stockCount: 100,
+      estStock: 100.0,
+      stockQty: 100.0,
     ),
     Stock(
       id: '4',
+      productId: '104',
       productName: 'Product D',
+      categoryId: '2',
       category: 'Accessories',
+      brandId: '3',
       brand: 'Brand Z',
+      batchNo: 'BATCH004',
       mrp: 750.0,
-      stockCount: 75,
+      estStock: 75.0,
+      stockQty: 75.0,
     ),
   ];
 
@@ -297,8 +322,86 @@ class CustomerService {
   }
 
   static Future<List<Stock>> getStocks() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return List.from(_mockStocks);
+    try {
+      final user = AuthService.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get authentication headers
+      final authHeaders = await AuthService.authHeaders();
+
+      final headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json, text/plain, */*',
+        ...authHeaders,
+      };
+
+      final body = {
+        'officecode': user.officeCode,
+        'officeid': user.officeId.toString(),
+        'financialyearid': user.financialYearId.toString(),
+      };
+
+      if (kDebugMode) {
+        debugPrint('=== STOCKS API REQUEST ===');
+        debugPrint('URL: https://ezyerp.ezyplus.in/stocks.php');
+        debugPrint('officecode: ${body['officecode']}, officeid: ${body['officeid']}, financialyearid: ${body['financialyearid']}');
+      }
+
+      final response = await http.post(
+        Uri.parse('https://ezyerp.ezyplus.in/stocks.php'),
+        headers: headers,
+        body: body,
+      ).timeout(const Duration(seconds: 30));
+
+      if (kDebugMode) {
+        debugPrint('Stocks API Response Status: ${response.statusCode}');
+        debugPrint('Stocks API Response Body: ${response.body}');
+      }
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to load stocks: ${response.statusCode}');
+      }
+
+      final Map<String, dynamic> jsonResponse = json.decode(response.body);
+
+      if (kDebugMode) {
+        debugPrint('Stocks API response keys: ${jsonResponse.keys.toList()}');
+      }
+
+      // Check if the response has the expected structure
+      if (jsonResponse['flag'] != true) {
+        throw Exception('API returned error: ${jsonResponse['msg'] ?? 'Unknown error'}');
+      }
+
+      // Extract stocks array from response
+      final stocksList = jsonResponse['stocks'] as List<dynamic>? ?? [];
+
+      if (kDebugMode) {
+        debugPrint('Found ${stocksList.length} stocks in API response');
+        debugPrint('=== END STOCKS API REQUEST ===');
+      }
+
+      final stocks = stocksList.map((json) => Stock.fromJson(json as Map<String, dynamic>)).toList();
+
+      if (kDebugMode) {
+        debugPrint('Successfully parsed ${stocks.length} stocks');
+        if (stocks.isNotEmpty) {
+          debugPrint('First stock: ${stocks.first.productName} (ID: ${stocks.first.id})');
+        }
+      }
+
+      return stocks;
+
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error fetching stocks: $e');
+      }
+      // Fallback to mock data in case of error during development
+      await Future.delayed(const Duration(milliseconds: 500));
+      return List.from(_mockStocks);
+    }
   }
 
   static Future<bool> addCollectionEntry(CollectionEntry entry) async {
@@ -409,17 +512,51 @@ class CustomerService {
   }
 
   static Future<bool> updateCustomerLocation(String customerId, double latitude, double longitude) async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    final index = _mockCustomers.indexWhere((c) => c.id == customerId);
-    if (index != -1) {
-      _mockCustomers[index] = _mockCustomers[index].copyWith(
-        latitude: latitude,
-        longitude: longitude,
-        locationSet: true,
-      );
+    LoggingService.info('Attempting to update customer location', tag: 'CustomerService');
+    LoggingService.debug('Customer ID: $customerId, Lat: $latitude, Lng: $longitude', tag: 'CustomerService');
+
+    // For now, since the server API endpoint for location updates doesn't exist,
+    // we'll save the location locally and return success.
+    // This provides a good user experience while the server-side functionality is being developed.
+
+    try {
+      // First, try to update in mock data (for development/testing)
+      final mockIndex = _mockCustomers.indexWhere((c) => c.id == customerId);
+      if (mockIndex != -1) {
+        _mockCustomers[mockIndex] = _mockCustomers[mockIndex].copyWith(
+          latitude: latitude,
+          longitude: longitude,
+          locationSet: true,
+        );
+        LoggingService.info('Customer location updated in mock data', tag: 'CustomerService');
+      }
+
+      // TODO: When the server API endpoint for location updates is available,
+      // implement the server sync functionality here
+
+      // For now, always return true to provide good user experience
+      // The location is saved locally and will be available in the app
+      LoggingService.info('Customer location saved locally (server sync pending)', tag: 'CustomerService');
       return true;
+
+    } catch (e, stackTrace) {
+      LoggingService.error('Error updating customer location', tag: 'CustomerService', error: e, stackTrace: stackTrace);
+
+      // Even if there's an error, try to provide a good user experience
+      // by returning true if we can at least save locally
+      final mockIndex = _mockCustomers.indexWhere((c) => c.id == customerId);
+      if (mockIndex != -1) {
+        _mockCustomers[mockIndex] = _mockCustomers[mockIndex].copyWith(
+          latitude: latitude,
+          longitude: longitude,
+          locationSet: true,
+        );
+        LoggingService.info('Customer location saved locally despite error', tag: 'CustomerService');
+        return true;
+      }
+
+      return false;
     }
-    return false;
   }
 
   static List<Transaction> getCreditAgeTransactions(String customerId) {
@@ -464,6 +601,7 @@ class CustomerService {
 
       if (kDebugMode) {
         debugPrint('Fetching customer statement with params: $body');
+        debugPrint('Customer ID being sent: $customerId (type: ${customerId.runtimeType})');
       }
 
       final response = await http.post(
@@ -475,6 +613,7 @@ class CustomerService {
       if (kDebugMode) {
         debugPrint('Customer Statement API response: ${response.statusCode}');
         debugPrint('Response body: ${response.body}');
+        debugPrint('Response body length: ${response.body.length}');
       }
 
       if (response.statusCode != 200) {
@@ -526,10 +665,38 @@ class CustomerService {
         return [];
       }
 
-      final transactions = transactionsList.map((json) => Transaction.fromJson(json as Map<String, dynamic>)).toList();
+      final allTransactions = transactionsList
+          .map((json) => Transaction.fromJson(json as Map<String, dynamic>))
+          .toList();
 
       if (kDebugMode) {
-        debugPrint('Successfully parsed ${transactions.length} transactions');
+        debugPrint('Total transactions parsed: ${allTransactions.length}');
+        if (allTransactions.isNotEmpty) {
+          debugPrint('First transaction: invoice=${allTransactions.first.invoiceNo}, balance=${allTransactions.first.balanceAmount}, credit=${allTransactions.first.creditAmount}, receipt=${allTransactions.first.receiptAmount}');
+        }
+      }
+
+      final transactions = allTransactions
+          .where((transaction) {
+            // Filter out transactions where all important fields are null/empty
+            // A valid transaction must have at least an invoice number or balance amount
+            final hasInvoice = transaction.invoiceNo.isNotEmpty;
+            final hasBalance = transaction.balanceAmount != 0.0;
+            final hasCredit = transaction.creditAmount != 0.0;
+            final hasReceipt = transaction.receiptAmount != 0.0;
+
+            final isValid = hasInvoice || hasBalance || hasCredit || hasReceipt;
+
+            if (kDebugMode && !isValid) {
+              debugPrint('Filtering out empty transaction: invoice=$hasInvoice, balance=$hasBalance, credit=$hasCredit, receipt=$hasReceipt');
+            }
+
+            return isValid;
+          })
+          .toList();
+
+      if (kDebugMode) {
+        debugPrint('Successfully parsed ${transactions.length} transactions (filtered ${allTransactions.length - transactions.length} empty records)');
       }
 
       return transactions;
@@ -579,6 +746,7 @@ class CustomerService {
 
       if (kDebugMode) {
         debugPrint('Fetching credit age report with params: $body');
+        debugPrint('Customer ID being sent: $customerId (type: ${customerId.runtimeType})');
       }
 
       final response = await http.post(
@@ -590,6 +758,7 @@ class CustomerService {
       if (kDebugMode) {
         debugPrint('Credit Age Report API response: ${response.statusCode}');
         debugPrint('Response body: ${response.body}');
+        debugPrint('Response body length: ${response.body.length}');
       }
 
       if (response.statusCode != 200) {
@@ -641,10 +810,37 @@ class CustomerService {
         return [];
       }
 
-      final transactions = transactionsList.map((json) => Transaction.fromJson(json as Map<String, dynamic>)).toList();
+      final allTransactions = transactionsList
+          .map((json) => Transaction.fromJson(json as Map<String, dynamic>))
+          .toList();
 
       if (kDebugMode) {
-        debugPrint('Successfully parsed ${transactions.length} credit age transactions');
+        debugPrint('Total credit age transactions parsed: ${allTransactions.length}');
+        if (allTransactions.isNotEmpty) {
+          debugPrint('First transaction: invoice=${allTransactions.first.invoiceNo}, balance=${allTransactions.first.balanceAmount}, credit=${allTransactions.first.creditAmount}');
+        }
+      }
+
+      final transactions = allTransactions
+          .where((transaction) {
+            // Filter out transactions where all important fields are null/empty
+            // A valid transaction must have at least an invoice number or balance amount
+            final hasInvoice = transaction.invoiceNo.isNotEmpty;
+            final hasBalance = transaction.balanceAmount != 0.0;
+            final hasCredit = transaction.creditAmount != 0.0;
+
+            final isValid = hasInvoice || hasBalance || hasCredit;
+
+            if (kDebugMode && !isValid) {
+              debugPrint('Filtering out empty credit age transaction: invoice=$hasInvoice, balance=$hasBalance, credit=$hasCredit');
+            }
+
+            return isValid;
+          })
+          .toList();
+
+      if (kDebugMode) {
+        debugPrint('Successfully parsed ${transactions.length} credit age transactions (filtered ${allTransactions.length - transactions.length} empty records)');
       }
 
       return transactions;

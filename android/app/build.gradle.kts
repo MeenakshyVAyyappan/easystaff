@@ -28,13 +28,31 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Enable multidex for large apps
+        multiDexEnabled = true
+
+        // Ensure proper resource handling
+        vectorDrawables.useSupportLibrary = true
     }
 
     buildTypes {
+        debug {
+            isDebuggable = true
+            isMinifyEnabled = false
+            applicationIdSuffix = ".debug"
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // Disable minification for now to avoid issues
+            isMinifyEnabled = false
+            isShrinkResources = false
+
+            // Ensure debugging is disabled in release
+            isDebuggable = false
         }
     }
 }
