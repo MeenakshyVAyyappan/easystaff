@@ -34,23 +34,45 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> {
 
     try {
       print('=== CUSTOMER STATEMENT PAGE DEBUG ===');
-      print('DEBUG: Customer object: ${widget.customer.name}');
+      print('DEBUG: Customer: ${widget.customer.name}');
       print('DEBUG: Customer ID: "${widget.customer.id}" (type: ${widget.customer.id.runtimeType}, length: ${widget.customer.id.length})');
       print('DEBUG: Customer ID isEmpty: ${widget.customer.id.isEmpty}');
-      print('DEBUG: Date range: ${_selectedFromDate} to ${_selectedToDate}');
+      print('DEBUG: Customer ID trimmed: "${widget.customer.id.trim()}"');
+      print('DEBUG: Date range: ${_selectedFromDate.toString().split(' ')[0]} to ${_selectedToDate.toString().split(' ')[0]}');
+
+      // Validate customer ID before making API call
+      if (widget.customer.id.trim().isEmpty) {
+        print('ERROR: Customer ID is empty, cannot fetch statement');
+        setState(() {
+          _transactions = [];
+          _filteredTransactions = [];
+          _isLoading = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Error: Customer ID is missing. Cannot load statement.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
 
       // Use real API with date range and financial year fallback
+      print('DEBUG: Calling API for customer statement...');
       final transactions = await CustomerService.getCustomerStatementWithFallback(
         customerId: widget.customer.id,
         startDate: _selectedFromDate,
         endDate: _selectedToDate,
       );
 
-      print('DEBUG: Loaded ${transactions.length} transactions');
+      print('DEBUG: API returned ${transactions.length} transactions');
 
       // If no transactions found, try expanding the date range
       if (transactions.isEmpty) {
-        print('DEBUG: No transactions found, trying expanded date range...');
+        print('DEBUG: No transactions found, trying expanded date range (1 year)...');
         final expandedStartDate = DateTime.now().subtract(const Duration(days: 365)); // 1 year back
         final expandedTransactions = await CustomerService.getCustomerStatementWithFallback(
           customerId: widget.customer.id,
@@ -65,15 +87,38 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> {
           _filteredTransactions = _filterTransactionsByDate(expandedTransactions);
           _isLoading = false;
         });
+
+        // Show info message if we had to expand the date range
+        if (expandedTransactions.isNotEmpty && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Found ${expandedTransactions.length} transactions in the last year'),
+              backgroundColor: Colors.blue,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       } else {
         setState(() {
           _transactions = transactions;
           _filteredTransactions = _filterTransactionsByDate(transactions);
           _isLoading = false;
         });
+
+        // Show success message
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Loaded ${transactions.length} transactions'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       }
 
-      print('DEBUG: Filtered to ${_filteredTransactions.length} transactions');
+      print('DEBUG: Final filtered transactions: ${_filteredTransactions.length}');
+      print('=== END CUSTOMER STATEMENT PAGE DEBUG ===');
     } catch (e) {
       print('DEBUG: Error loading customer statement: $e');
       setState(() {
@@ -82,8 +127,14 @@ class _CustomerStatementPageState extends State<CustomerStatementPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading transactions: $e'),
+            content: Text('Error loading transactions: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
             duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _loadTransactions,
+            ),
           ),
         );
       }

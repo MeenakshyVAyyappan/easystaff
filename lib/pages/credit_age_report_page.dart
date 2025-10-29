@@ -36,7 +36,18 @@ class _CreditAgeReportPageState extends State<CreditAgeReportPage> {
       print('DEBUG: Customer object: ${widget.customer.name}');
       print('DEBUG: Customer ID: "${widget.customer.id}" (type: ${widget.customer.id.runtimeType}, length: ${widget.customer.id.length})');
       print('DEBUG: Customer ID isEmpty: ${widget.customer.id.isEmpty}');
+      print('DEBUG: Customer ID trimmed: "${widget.customer.id.trim()}"');
       print('DEBUG: Parameters - Days: $_numberOfDays, Condition: $_condition');
+
+      // Validate customer ID before making API call
+      if (widget.customer.id.trim().isEmpty) {
+        print('ERROR: Customer ID is empty, cannot fetch credit age report');
+        setState(() {
+          _creditTransactions = [];
+          _isLoading = false;
+        });
+        return;
+      }
 
       // Use real API with parameters and financial year fallback
       final transactions = await CustomerService.getCreditAgeReportWithFallback(

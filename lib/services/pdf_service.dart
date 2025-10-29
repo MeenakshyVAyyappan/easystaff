@@ -116,7 +116,7 @@ class PdfService {
 
       final pdf = pw.Document();
       final dateFormat = DateFormat('dd/MM/yyyy');
-      
+
       // Calculate total outstanding
       final totalOutstanding = creditTransactions.fold<double>(
         0, (sum, transaction) => sum + transaction.balanceAmount);
@@ -130,15 +130,15 @@ class PdfService {
               // Header
               _buildHeader('Credit Age Report'),
               pw.SizedBox(height: 20),
-              
+
               // Customer Info
               _buildCreditAgeInfo(customer, numberOfDays, condition),
               pw.SizedBox(height: 20),
-              
+
               // Credit Transactions Table
               _buildCreditTransactionsTable(creditTransactions, dateFormat),
               pw.SizedBox(height: 20),
-              
+
               // Summary
               _buildCreditSummary(totalOutstanding, creditTransactions.length),
             ];
@@ -151,6 +151,57 @@ class PdfService {
       await _savePdfAndShare(
         pdf,
         'Credit_Age_Report_${cleanCustomerName}_${dateFormat.format(DateTime.now())}.pdf'
+      );
+    } catch (e) {
+      throw Exception('Failed to generate credit age report PDF: $e');
+    }
+  }
+
+  /// Generate and share Collections Report PDF
+  static Future<void> generateAndShareCollectionsReport({
+    required List<CollectionEntry> collections,
+    required DateTime fromDate,
+    required DateTime toDate,
+  }) async {
+    try {
+      // Initialize fonts
+      await _initializeFonts();
+
+      final pdf = pw.Document();
+      final dateFormat = DateFormat('dd/MM/yyyy');
+
+      // Calculate total amount
+      final totalAmount = collections.fold<double>(
+        0, (sum, collection) => sum + collection.amount);
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(32),
+          build: (pw.Context context) {
+            return [
+              // Header
+              _buildHeader('Collections Report'),
+              pw.SizedBox(height: 20),
+
+              // Report Info
+              _buildCollectionsInfo(fromDate, toDate, dateFormat, totalAmount, collections.length),
+              pw.SizedBox(height: 20),
+
+              // Collections Table
+              _buildCollectionsTable(collections, dateFormat),
+              pw.SizedBox(height: 20),
+
+              // Summary
+              _buildCollectionsSummary(totalAmount, collections.length),
+            ];
+          },
+        ),
+      );
+
+      await _savePdfAndShare(
+        pdf,
+        'Collections_Report_${dateFormat.format(DateTime.now())}.pdf'
       );
     } catch (e) {
       throw Exception('Failed to generate credit age report PDF: $e');
@@ -489,6 +540,130 @@ class PdfService {
     );
   }
 
+  /// Build collections info section
+  static pw.Widget _buildCollectionsInfo(
+    DateTime fromDate,
+    DateTime toDate,
+    DateFormat dateFormat,
+    double totalAmount,
+    int totalCount
+  ) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.grey50,
+        border: pw.Border.all(color: PdfColors.grey300),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            'Period: ${dateFormat.format(fromDate)} to ${dateFormat.format(toDate)}',
+            style: _createTextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            'Total Collections: ${_formatCurrency(totalAmount)}',
+            style: _createTextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.green700),
+          ),
+          pw.Text(
+            'Total Entries: $totalCount',
+            style: _createTextStyle(fontSize: 10, color: PdfColors.grey700),
+          ),
+          pw.Text(
+            'Generated on: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+            style: _createTextStyle(fontSize: 10, color: PdfColors.grey700),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build collections table
+  static pw.Widget _buildCollectionsTable(
+    List<CollectionEntry> collections,
+    DateFormat dateFormat
+  ) {
+    return pw.Table(
+      border: pw.TableBorder.all(color: PdfColors.grey300),
+      children: [
+        // Header
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+          children: [
+            _buildTableCell('Date', isHeader: true),
+            _buildTableCell('Company', isHeader: true),
+            _buildTableCell('Amount (Rs.)', isHeader: true),
+            _buildTableCell('Type', isHeader: true),
+            _buildTableCell('Payment', isHeader: true),
+            _buildTableCell('Remarks', isHeader: true),
+          ],
+        ),
+        // Data rows
+        ...collections.map((collection) => pw.TableRow(
+          children: [
+            _buildTableCell(dateFormat.format(collection.date)),
+            _buildTableCell(collection.customerName ?? 'N/A'),
+            _buildTableCell(
+              _formatCurrency(collection.amount),
+              textColor: PdfColors.green700,
+            ),
+            _buildTableCell(collection.type.toString().split('.').last.toUpperCase()),
+            _buildTableCell(collection.paymentType.toString().split('.').last.toUpperCase()),
+            _buildTableCell(collection.remarks ?? ''),
+          ],
+        )),
+      ],
+    );
+  }
+
+  /// Build collections summary section
+  static pw.Widget _buildCollectionsSummary(double totalAmount, int totalCount) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.blue50,
+        border: pw.Border.all(color: PdfColors.blue200),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Summary',
+                style: _createTextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Text(
+                'Total Entries: $totalCount',
+                style: _createTextStyle(fontSize: 10),
+              ),
+            ],
+          ),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Text(
+                'Total Amount',
+                style: _createTextStyle(fontSize: 10, color: PdfColors.grey700),
+              ),
+              pw.Text(
+                _formatCurrency(totalAmount),
+                style: _createTextStyle(
+                  fontSize: 14,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.green700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Save PDF and share
   static Future<void> _savePdfAndShare(pw.Document pdf, String fileName) async {
     try {
@@ -522,10 +697,7 @@ class PdfService {
 
       // Use the new SharePlus API
       print('DEBUG: Sharing PDF file...');
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: 'Generated from EazyStaff',
-      );
+      await Share.shareXFiles([XFile(file.path)]);
       print('DEBUG: PDF shared successfully');
     } catch (e) {
       print('DEBUG: Error in _savePdfAndShare: $e');

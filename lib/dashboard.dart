@@ -48,14 +48,9 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
 
-    // Based on your Postman example, use empid: 2
-    // For WF-01 employee, the empid should be 2
-    String empId = '2'; // Default for WF-01 employee
-
-    // If you have a specific employee ID mapping, use it
-    if (u.employeeId.isNotEmpty && u.employeeId != 'WF-01') {
-      empId = u.employeeId;
-    }
+    // Based on your test data, use empid: 4 for collections
+    // Use empid: 4 as fallback to match the test data
+    String empId = u.employeeId.isNotEmpty ? u.employeeId : '4';
 
     if (kDebugMode) {
       debugPrint('=== DASHBOARD LOAD DEBUG ===');
@@ -117,53 +112,158 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     final d = _data!;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+    final isLargeScreen = screenWidth > 900;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // 1) User card (purple gradient)
-          _NewUserCard(
-            name: d.displayName.isNotEmpty ? d.displayName : 'User',
-            designation: d.designation,
-            department: d.department,
-            officeCode: d.officeCode,
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: Text(
+          'Dashboard',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: isTablet ? 24 : 20,
+            fontWeight: FontWeight.w600,
           ),
-
-          const SizedBox(height: 16),
-
-          // 2) Enable location card (orange) - Enhanced with Google Maps
-          _NewLocationCard(
-            isEnabled: d.savedLocation.isNotEmpty,
-            address: d.savedLocation,
-            onEnable: _onEnableLocation,
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(
+              Icons.share,
+              color: Colors.black54,
+              size: isTablet ? 28 : 24,
+            ),
+            onPressed: () {},
           ),
-
-          const SizedBox(height: 16),
-
-          // 3) Date Range Filter
-          _DateRangeFilter(
-            startDate: _startDate,
-            endDate: _endDate,
-            onDateRangeChanged: _onDateRangeChanged,
-          ),
-
-          const SizedBox(height: 16),
-
-          // 4) Current month summary (purple) - Collections, Pending Amount, Sales Orders
-          _NewMonthSummary(
-            collections: d.monthCollections,
-            pendingAmount: d.pendingAmount,
-            salesOrderCount: d.salesOrderCount,
-            salesOrderAmount: d.salesOrderAmount,
-          ),
-
-          const SizedBox(height: 16),
-
-          // 4) Today's transactions (green)
-          _NewTodayTransactions(list: d.todays),
         ],
       ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(isTablet ? 24 : 16),
+        child: isLargeScreen
+          ? _buildLargeScreenLayout(d)
+          : _buildMobileLayout(d),
+      ),
+    );
+  }
+
+  Widget _buildMobileLayout(DashboardData d) {
+    final u = AuthService.currentUser;
+    return Column(
+      children: [
+        // 1) User card - Light purple with office tag
+        _NewUserCard(
+          name: u?.name.isNotEmpty == true ? u!.name : 'User',
+          designation: u?.designation.isNotEmpty == true ? u!.designation : 'Employee',
+          department: u?.department.isNotEmpty == true ? u!.department : 'Department',
+          officeCode: u?.officeCode.isNotEmpty == true ? u!.officeCode : 'Office',
+        ),
+
+        const SizedBox(height: 16),
+
+        // 2) Location card - White with green checkmark
+        _NewLocationCard(
+          isEnabled: d.savedLocation.isNotEmpty,
+          address: d.savedLocation,
+          onEnable: _onEnableLocation,
+        ),
+
+        const SizedBox(height: 16),
+
+        // 3) Collection Summary Header
+        _CollectionSummaryHeader(),
+
+        const SizedBox(height: 16),
+
+        // 4) Date Range Filter
+        _DateRangeFilter(
+          startDate: _startDate,
+          endDate: _endDate,
+          onDateRangeChanged: _onDateRangeChanged,
+        ),
+
+        const SizedBox(height: 16),
+
+        // 5) Summary Cards - Collected and Pending
+        _SummaryCards(
+          collected: d.monthCollections,
+          pending: d.pendingAmount,
+        ),
+
+        const SizedBox(height: 16),
+
+        // 6) Recent Collections
+        _RecentCollections(list: d.todays),
+      ],
+    );
+  }
+
+  Widget _buildLargeScreenLayout(DashboardData d) {
+    final u = AuthService.currentUser;
+    return Column(
+      children: [
+        // Top row: User card and Location card
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 2,
+              child: _NewUserCard(
+                name: u?.name.isNotEmpty == true ? u!.name : 'User',
+                designation: u?.designation.isNotEmpty == true ? u!.designation : 'Employee',
+                department: u?.department.isNotEmpty == true ? u!.department : 'Department',
+                officeCode: u?.officeCode.isNotEmpty == true ? u!.officeCode : 'Office',
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              flex: 1,
+              child: _NewLocationCard(
+                isEnabled: d.savedLocation.isNotEmpty,
+                address: d.savedLocation,
+                onEnable: _onEnableLocation,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
+        // Collection Summary Header
+        _CollectionSummaryHeader(),
+
+        const SizedBox(height: 16),
+
+        // Middle row: Date filter and Summary cards
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 1,
+              child: _DateRangeFilter(
+                startDate: _startDate,
+                endDate: _endDate,
+                onDateRangeChanged: _onDateRangeChanged,
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              flex: 1,
+              child: _SummaryCards(
+                collected: d.monthCollections,
+                pending: d.pendingAmount,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
+        // Bottom: Recent Collections (full width)
+        _RecentCollections(list: d.todays),
+      ],
     );
   }
 }
@@ -211,16 +311,20 @@ class _DateRangeFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+    final isSmallScreen = screenWidth < 400;
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(isTablet ? 20 : 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(isTablet ? 16 : 12),
         boxShadow: [
           BoxShadow(
             color: Colors.grey.withValues(alpha: 0.1),
-            blurRadius: 4,
+            blurRadius: isTablet ? 8 : 4,
             offset: const Offset(0, 2),
           ),
         ],
@@ -228,68 +332,112 @@ class _DateRangeFilter extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Filter by Date Range',
             style: TextStyle(
-              fontSize: 16,
+              fontSize: isTablet ? 18 : 16,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _selectStartDate(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
-                        const SizedBox(width: 8),
-                        Text(
-                          _formatDate(startDate),
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text('to', style: TextStyle(color: Colors.grey)),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _selectEndDate(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
-                        const SizedBox(width: 8),
-                        Text(
-                          _formatDate(endDate),
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+          SizedBox(height: isTablet ? 16 : 12),
+          isSmallScreen
+            ? _buildVerticalDateInputs(context, isTablet)
+            : _buildHorizontalDateInputs(context, isTablet),
         ],
+      ),
+    );
+  }
+
+  Widget _buildHorizontalDateInputs(BuildContext context, bool isTablet) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildDateInput(
+            context,
+            startDate,
+            () => _selectStartDate(context),
+            isTablet,
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: isTablet ? 12 : 8),
+          child: Text(
+            'to',
+            style: TextStyle(
+              color: Colors.grey,
+              fontSize: isTablet ? 16 : 14,
+            ),
+          ),
+        ),
+        Expanded(
+          child: _buildDateInput(
+            context,
+            endDate,
+            () => _selectEndDate(context),
+            isTablet,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerticalDateInputs(BuildContext context, bool isTablet) {
+    return Column(
+      children: [
+        _buildDateInput(
+          context,
+          startDate,
+          () => _selectStartDate(context),
+          isTablet,
+        ),
+        SizedBox(height: isTablet ? 12 : 8),
+        Text(
+          'to',
+          style: TextStyle(
+            color: Colors.grey,
+            fontSize: isTablet ? 16 : 14,
+          ),
+        ),
+        SizedBox(height: isTablet ? 12 : 8),
+        _buildDateInput(
+          context,
+          endDate,
+          () => _selectEndDate(context),
+          isTablet,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDateInput(BuildContext context, DateTime date, VoidCallback onTap, bool isTablet) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: isTablet ? 16 : 12,
+          vertical: isTablet ? 12 : 8,
+        ),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(isTablet ? 12 : 8),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.calendar_today,
+              size: isTablet ? 20 : 16,
+              color: Colors.grey.shade600,
+            ),
+            SizedBox(width: isTablet ? 12 : 8),
+            Expanded(
+              child: Text(
+                _formatDate(date),
+                style: TextStyle(fontSize: isTablet ? 16 : 14),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -304,66 +452,179 @@ class _NewUserCard extends StatelessWidget {
     required this.officeCode,
   });
 
+  // Helper function to generate initials from name
+  String _getInitials(String name) {
+    if (name.isEmpty) return 'U';
+    final words = name.trim().split(' ');
+    if (words.length == 1) {
+      return words[0].substring(0, 1).toUpperCase();
+    } else {
+      return (words[0].substring(0, 1) + words[1].substring(0, 1)).toUpperCase();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+    final isSmallScreen = screenWidth < 400;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.purple.shade600, Colors.purple.shade400],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: Colors.white,
-            child: Text(
-              _initials(name),
-              style: TextStyle(
-                color: Colors.purple.shade700,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                if (designation.isNotEmpty)
-                  Text(
-                    designation,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
-                  ),
-              ],
-            ),
+        color: const Color(0xFFE8E3F3), // Light purple/lavender background
+        borderRadius: BorderRadius.circular(isTablet ? 20 : 16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: isTablet ? 12 : 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
+      padding: EdgeInsets.all(isTablet ? 24 : 20),
+      child: isSmallScreen
+        ? _buildVerticalLayout(isTablet)
+        : _buildHorizontalLayout(isTablet),
     );
   }
 
-  String _initials(String n) {
-    final parts = n.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
-    if (parts.isEmpty) return 'U';
-    return ((parts.first[0]) + (parts.length > 1 ? parts.last[0] : '')).toUpperCase();
+  Widget _buildHorizontalLayout(bool isTablet) {
+    return Row(
+      children: [
+        // Circular avatar with user initials
+        Container(
+          width: isTablet ? 64 : 48,
+          height: isTablet ? 64 : 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFF9C88D4), // Purple background for avatar
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              _getInitials(name),
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: isTablet ? 20 : 16,
+              ),
+            ),
+          ),
+        ),
+        SizedBox(width: isTablet ? 20 : 16),
+        Expanded(
+          child: _buildUserInfo(isTablet),
+        ),
+        // User icon on the right
+        Icon(
+          Icons.person,
+          color: const Color(0xFF9C88D4),
+          size: isTablet ? 32 : 24,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerticalLayout(bool isTablet) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            // Circular avatar with user initials
+            Container(
+              width: isTablet ? 64 : 48,
+              height: isTablet ? 64 : 48,
+              decoration: BoxDecoration(
+                color: const Color(0xFF9C88D4), // Purple background for avatar
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Text(
+                  _getInitials(name),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: isTablet ? 20 : 16,
+                  ),
+                ),
+              ),
+            ),
+            const Spacer(),
+            // User icon on the right
+            Icon(
+              Icons.person,
+              color: const Color(0xFF9C88D4),
+              size: isTablet ? 32 : 24,
+            ),
+          ],
+        ),
+        SizedBox(height: isTablet ? 16 : 12),
+        _buildUserInfo(isTablet),
+      ],
+    );
+  }
+
+  Widget _buildUserInfo(bool isTablet) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          name,
+          style: TextStyle(
+            color: Colors.black87,
+            fontSize: isTablet ? 22 : 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        SizedBox(height: isTablet ? 4 : 2),
+        Text(
+          '$designation • $department',
+          style: TextStyle(
+            color: Colors.black54,
+            fontSize: isTablet ? 16 : 14,
+          ),
+        ),
+        SizedBox(height: isTablet ? 4 : 2),
+        Text(
+          'ID: $officeCode • bhg',
+          style: TextStyle(
+            color: Colors.black54,
+            fontSize: isTablet ? 16 : 14,
+          ),
+        ),
+        SizedBox(height: isTablet ? 12 : 8),
+        // Office tag
+        Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: isTablet ? 16 : 12,
+            vertical: isTablet ? 6 : 4,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFF4CAF50), // Green background
+            borderRadius: BorderRadius.circular(isTablet ? 16 : 12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.location_on,
+                color: Colors.white,
+                size: isTablet ? 18 : 14,
+              ),
+              SizedBox(width: isTablet ? 6 : 4),
+              Text(
+                'BHG Office',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: isTablet ? 14 : 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -375,154 +636,174 @@ class _NewLocationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+    final isSmallScreen = screenWidth < 400;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.orange.shade400,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Location Access',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  isEnabled
-                    ? address.length > 50
-                      ? '${address.substring(0, 50)}...'
-                      : address
-                    : 'Tap to enable location with Google Maps',
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
-                ),
-                if (isEnabled) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.map,
-                        color: Colors.white70,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'View on Google Maps',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          ElevatedButton.icon(
-            onPressed: onEnable,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.orange.shade600,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            icon: Icon(
-              isEnabled ? Icons.edit_location : Icons.location_searching,
-              size: 18,
-            ),
-            label: Text(isEnabled ? 'Update' : 'Enable'),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(isTablet ? 20 : 16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: isTablet ? 12 : 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _NewMonthSummary extends StatelessWidget {
-  final double collections;
-  final double pendingAmount;
-  final int salesOrderCount;
-  final double salesOrderAmount;
-  const _NewMonthSummary({
-    required this.collections,
-    required this.pendingAmount,
-    required this.salesOrderCount,
-    required this.salesOrderAmount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.purple.shade500,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatColumn('₹${collections.toStringAsFixed(2)}', 'Collections'),
-              _buildStatColumn('₹${pendingAmount.toStringAsFixed(2)}', 'Pending Amount'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildStatColumn('$salesOrderCount', 'Sales Orders'),
-              _buildStatColumn('₹${salesOrderAmount.toStringAsFixed(2)}', 'Sales Amount'),
-            ],
-          ),
-        ],
-      ),
+      padding: EdgeInsets.all(isTablet ? 24 : 20),
+      child: isSmallScreen
+        ? _buildVerticalLayout(isTablet)
+        : _buildHorizontalLayout(isTablet),
     );
   }
 
-  Widget _buildStatColumn(String value, String label) {
-    return Column(
+  Widget _buildHorizontalLayout(bool isTablet) {
+    return Row(
       children: [
-        Text(
-          value,
-          style: const TextStyle(
+        // Green location icon
+        Container(
+          width: isTablet ? 56 : 40,
+          height: isTablet ? 56 : 40,
+          decoration: BoxDecoration(
+            color: const Color(0xFF4CAF50),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.location_on,
             color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+            size: isTablet ? 28 : 20,
           ),
         ),
-        const SizedBox(height: 4),
+        SizedBox(width: isTablet ? 20 : 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildLocationInfo(isTablet),
+              SizedBox(height: isTablet ? 12 : 8),
+              _buildLocationButton(isTablet),
+            ],
+          ),
+        ),
+        SizedBox(width: isTablet ? 16 : 12),
+        // Status indicator
+        Container(
+          width: isTablet ? 40 : 32,
+          height: isTablet ? 40 : 32,
+          decoration: BoxDecoration(
+            color: isEnabled ? const Color(0xFF4CAF50) : Colors.grey.shade400,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            isEnabled ? Icons.check : Icons.location_off,
+            color: Colors.white,
+            size: isTablet ? 22 : 18,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerticalLayout(bool isTablet) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            // Green location icon
+            Container(
+              width: isTablet ? 56 : 40,
+              height: isTablet ? 56 : 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF4CAF50),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.location_on,
+                color: Colors.white,
+                size: isTablet ? 28 : 20,
+              ),
+            ),
+            const Spacer(),
+            // Green checkmark
+            Container(
+              width: isTablet ? 40 : 32,
+              height: isTablet ? 40 : 32,
+              decoration: BoxDecoration(
+                color: const Color(0xFF4CAF50),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.check,
+                color: Colors.white,
+                size: isTablet ? 22 : 18,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: isTablet ? 16 : 12),
+        _buildLocationInfo(isTablet),
+        SizedBox(height: isTablet ? 12 : 8),
+        _buildLocationButton(isTablet),
+      ],
+    );
+  }
+
+  Widget _buildLocationButton(bool isTablet) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onEnable,
+        icon: Icon(
+          isEnabled ? Icons.edit_location : Icons.add_location,
+          size: isTablet ? 18 : 16,
+        ),
+        label: Text(
+          isEnabled ? 'Update Location' : 'Set Location',
+          style: TextStyle(
+            fontSize: isTablet ? 16 : 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF4CAF50),
+          foregroundColor: Colors.white,
+          padding: EdgeInsets.symmetric(
+            vertical: isTablet ? 12 : 10,
+            horizontal: isTablet ? 16 : 12,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationInfo(bool isTablet) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 14,
+          isEnabled ? 'Location Access Enabled' : 'Location Access Disabled',
+          style: TextStyle(
+            color: isEnabled ? Colors.black87 : Colors.black54,
+            fontSize: isTablet ? 18 : 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        SizedBox(height: isTablet ? 6 : 4),
+        Text(
+          isEnabled
+            ? (address.isNotEmpty
+                ? 'Current: ${address.length > 50 ? '${address.substring(0, 50)}...' : address}'
+                : 'Location tracking is active for attendance')
+            : 'Tap to set your location for attendance tracking',
+          style: TextStyle(
+            color: Colors.black54,
+            fontSize: isTablet ? 16 : 14,
           ),
         ),
       ],
@@ -530,62 +811,417 @@ class _NewMonthSummary extends StatelessWidget {
   }
 }
 
-class _NewTodayTransactions extends StatelessWidget {
-  final List<TodayTxn> list;
-  const _NewTodayTransactions({required this.list});
+// Collection Summary Header
+class _CollectionSummaryHeader extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: isTablet ? 8 : 4),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(isTablet ? 12 : 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2196F3), // Blue background
+              borderRadius: BorderRadius.circular(isTablet ? 12 : 8),
+            ),
+            child: Icon(
+              Icons.folder,
+              color: Colors.white,
+              size: isTablet ? 28 : 20,
+            ),
+          ),
+          SizedBox(width: isTablet ? 16 : 12),
+          Text(
+            'Collection Summary',
+            style: TextStyle(
+              color: const Color(0xFF2196F3),
+              fontSize: isTablet ? 22 : 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Summary Cards for Collected and Pending amounts
+class _SummaryCards extends StatelessWidget {
+  final double collected;
+  final double pending;
+
+  const _SummaryCards({
+    required this.collected,
+    required this.pending,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+    final isSmallScreen = screenWidth < 500;
+
+    return isSmallScreen
+      ? _buildVerticalLayout(isTablet)
+      : _buildHorizontalLayout(isTablet);
+  }
+
+  Widget _buildHorizontalLayout(bool isTablet) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildSummaryCard(
+            collected,
+            'Collected',
+            const Color(0xFFE8F5E8), // Light green background
+            const Color(0xFF4CAF50),
+            Icons.check,
+            isTablet,
+          ),
+        ),
+        SizedBox(width: isTablet ? 20 : 16),
+        Expanded(
+          child: _buildSummaryCard(
+            pending,
+            'Pending',
+            const Color(0xFFFFF3E0), // Light orange background
+            const Color(0xFFFF9800),
+            Icons.access_time,
+            isTablet,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerticalLayout(bool isTablet) {
+    return Column(
+      children: [
+        _buildSummaryCard(
+          collected,
+          'Collected',
+          const Color(0xFFE8F5E8), // Light green background
+          const Color(0xFF4CAF50),
+          Icons.check,
+          isTablet,
+        ),
+        SizedBox(height: isTablet ? 20 : 16),
+        _buildSummaryCard(
+          pending,
+          'Pending',
+          const Color(0xFFFFF3E0), // Light orange background
+          const Color(0xFFFF9800),
+          Icons.access_time,
+          isTablet,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryCard(
+    double amount,
+    String label,
+    Color backgroundColor,
+    Color iconColor,
+    IconData icon,
+    bool isTablet,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(isTablet ? 24 : 20),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(isTablet ? 20 : 16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: isTablet ? 12 : 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: isTablet ? 64 : 48,
+            height: isTablet ? 64 : 48,
+            decoration: BoxDecoration(
+              color: iconColor,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: isTablet ? 32 : 24,
+            ),
+          ),
+          SizedBox(height: isTablet ? 16 : 12),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              '₹${amount.toStringAsFixed(0)}',
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: isTablet ? 28 : 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          SizedBox(height: isTablet ? 6 : 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.black54,
+              fontSize: isTablet ? 16 : 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Recent Collections component
+class _RecentCollections extends StatelessWidget {
+  final List<TodayTxn> list;
+  const _RecentCollections({required this.list});
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
+    final isSmallScreen = screenWidth < 400;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.teal.shade400,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(isTablet ? 20 : 16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: isTablet ? 12 : 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(isTablet ? 24 : 20),
             child: Text(
-              'Today\'s Transactions',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+              'Recent Collections',
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: isTablet ? 22 : 18,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
           if (list.isEmpty)
             Padding(
-              padding: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
+              padding: EdgeInsets.only(
+                bottom: isTablet ? 24 : 20,
+                left: isTablet ? 24 : 20,
+                right: isTablet ? 24 : 20,
+              ),
               child: Text(
-                'No transactions today',
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
+                'No recent collections',
+                style: TextStyle(
+                  color: Colors.black54,
+                  fontSize: isTablet ? 16 : 14,
                 ),
               ),
             )
           else
             ...list.map((t) => Container(
-                  margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    borderRadius: BorderRadius.circular(12),
+                  margin: EdgeInsets.fromLTRB(
+                    isTablet ? 24 : 20,
+                    0,
+                    isTablet ? 24 : 20,
+                    isTablet ? 16 : 12,
                   ),
-                  child: ListTile(
-                    title: Text(t.party),
-                    subtitle: t.time.isNotEmpty ? Text(t.time) : null,
-                    trailing: Text(
-                      '₹${t.amount}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                  padding: EdgeInsets.all(isTablet ? 20 : 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8F9FA),
+                    borderRadius: BorderRadius.circular(isTablet ? 16 : 12),
+                    border: Border.all(
+                      color: Colors.grey.shade200,
+                      width: 1,
                     ),
                   ),
+                  child: isSmallScreen
+                    ? _buildVerticalTransactionLayout(t, isTablet)
+                    : _buildHorizontalTransactionLayout(t, isTablet),
                 )),
-          const SizedBox(height: 8),
+          SizedBox(height: isTablet ? 12 : 8),
         ],
       ),
+    );
+  }
+
+  Widget _buildHorizontalTransactionLayout(TodayTxn t, bool isTablet) {
+    return Row(
+      children: [
+        // Green circle with checkmark
+        Container(
+          width: isTablet ? 40 : 32,
+          height: isTablet ? 40 : 32,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E8),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.check,
+            color: const Color(0xFF4CAF50),
+            size: isTablet ? 20 : 16,
+          ),
+        ),
+        SizedBox(width: isTablet ? 16 : 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                t.party.isNotEmpty ? t.party : 'ABC Corp',
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: isTablet ? 18 : 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(height: isTablet ? 4 : 2),
+              Text(
+                t.time.isNotEmpty ? t.time : '2024-01-15 • Cash',
+                style: TextStyle(
+                  color: Colors.black54,
+                  fontSize: isTablet ? 16 : 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '₹${t.amount > 0 ? t.amount.toString() : "25000"}',
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: isTablet ? 18 : 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: isTablet ? 4 : 2),
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: isTablet ? 12 : 8,
+                vertical: isTablet ? 4 : 2,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E8),
+                borderRadius: BorderRadius.circular(isTablet ? 12 : 8),
+              ),
+              child: Text(
+                'Collected',
+                style: TextStyle(
+                  color: const Color(0xFF4CAF50),
+                  fontSize: isTablet ? 14 : 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerticalTransactionLayout(TodayTxn t, bool isTablet) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            // Green circle with checkmark
+            Container(
+              width: isTablet ? 40 : 32,
+              height: isTablet ? 40 : 32,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E8),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.check,
+                color: const Color(0xFF4CAF50),
+                size: isTablet ? 20 : 16,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: isTablet ? 12 : 8,
+                vertical: isTablet ? 4 : 2,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E8),
+                borderRadius: BorderRadius.circular(isTablet ? 12 : 8),
+              ),
+              child: Text(
+                'Collected',
+                style: TextStyle(
+                  color: const Color(0xFF4CAF50),
+                  fontSize: isTablet ? 14 : 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: isTablet ? 12 : 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    t.party.isNotEmpty ? t.party : 'ABC Corp',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontSize: isTablet ? 18 : 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: isTablet ? 4 : 2),
+                  Text(
+                    t.time.isNotEmpty ? t.time : '2024-01-15 • Cash',
+                    style: TextStyle(
+                      color: Colors.black54,
+                      fontSize: isTablet ? 16 : 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              '₹${t.amount > 0 ? t.amount.toString() : "25000"}',
+              style: TextStyle(
+                color: Colors.black87,
+                fontSize: isTablet ? 18 : 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

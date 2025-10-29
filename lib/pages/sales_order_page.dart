@@ -2,6 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:eazystaff/models/customer.dart';
 import 'package:eazystaff/services/customer_service.dart';
 
+/// ---------- Responsive helpers ----------
+extension ResponsiveX on BuildContext {
+  double get sw => MediaQuery.of(this).size.width;
+  double get sh => MediaQuery.of(this).size.height;
+
+  bool get isTablet => sw >= 900;
+  bool get isLargePhone => sw >= 600 && sw < 900;
+  bool get isPhone => sw < 600;
+
+  double r(double phone, {double? largePhone, double? tablet}) {
+    if (isTablet) return tablet ?? largePhone ?? phone;
+    if (isLargePhone) return largePhone ?? phone;
+    return phone;
+  }
+
+  double get basePad => r(12, largePhone: 16, tablet: 24);
+  double get fieldPadV => r(10, largePhone: 12, tablet: 14);
+  double get fieldPadH => r(12, largePhone: 14, tablet: 16);
+  double get corner => r(6, largePhone: 8, tablet: 10);
+  double get actionBtnH => r(44, largePhone: 50, tablet: 54);
+  double get titleSize => r(16, largePhone: 18, tablet: 20);
+  double get labelSize => r(12, largePhone: 13, tablet: 14);
+  double get bodySize => r(14, largePhone: 15, tablet: 16);
+}
+
 class SalesOrderPage extends StatefulWidget {
   const SalesOrderPage({super.key});
 
@@ -25,56 +50,73 @@ class _SalesOrderPageState extends State<SalesOrderPage> {
   }
 
   Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-    });
-
+    setState(() => _isLoading = true);
     try {
       final customers = await CustomerService.getCustomers();
       final stocks = await CustomerService.getStocks();
-      
       setState(() {
         _customers = customers;
         _stocks = stocks;
         _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading data: $e')),
-        );
-      }
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading data: $e')),
+      );
     }
   }
 
-  void _addOrderItem() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        Stock? selectedStock;
-        final quantityController = TextEditingController();
-        final priceController = TextEditingController();
+void _addOrderItem() {
+  // Guard: empty stock list
+  if (_stocks.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No products available. Please wait for data to load.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+    return;
+  }
 
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Add Product'),
-              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-              content: SingleChildScrollView(
+  // Declare variables outside showDialog so they persist
+  Stock? selectedStock;
+  final quantityController = TextEditingController();
+  final priceController = TextEditingController();
+
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogCtx) {
+      final media = MediaQuery.of(dialogCtx);
+      final maxWidth  = media.size.width >= 600 ? 520.0 : media.size.width * 0.96;
+      final maxHeight = (media.size.height - media.viewInsets.bottom) * 0.85;
+
+      return StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final isNarrow = MediaQuery.of(ctx).size.width < 360;
+
+          return AlertDialog(
+            title: const Text('Add Product'),
+            scrollable: true, // <-- lets content scroll when tight
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            content: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<Stock>(
-                      initialValue: selectedStock,
+                      value: selectedStock,
+                      isExpanded: true,
                       decoration: const InputDecoration(
-                        labelText: 'Select Product',
+                        labelText: 'Select Product *',
                         border: OutlineInputBorder(),
                         contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       ),
-                      isExpanded: true,
                       items: _stocks.map((stock) {
                         return DropdownMenuItem(
                           value: stock,
@@ -92,125 +134,135 @@ class _SalesOrderPageState extends State<SalesOrderPage> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: quantityController,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Quantity',
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+
+                    // Qty / Price fields: stack on very narrow screens
+                    if (isNarrow) ...[
+                      TextFormField(
+                        controller: quantityController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: false),
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'Quantity',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: priceController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        textInputAction: TextInputAction.done,
+                        decoration: const InputDecoration(
+                          labelText: 'Unit Price',
+                          prefixText: '₹ ',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      ),
+                    ] else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: quantityController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: false),
+                              textInputAction: TextInputAction.next,
+                              decoration: const InputDecoration(
+                                labelText: 'Quantity',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: priceController,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: 'Unit Price',
-                              prefixText: '₹ ',
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: priceController,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              textInputAction: TextInputAction.done,
+                              decoration: const InputDecoration(
+                                labelText: 'Unit Price',
+                                prefixText: '₹ ',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
                   ],
                 ),
               ),
-              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-              actions: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        child: const Text('Cancel'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          if (selectedStock != null &&
-                              quantityController.text.isNotEmpty &&
-                              priceController.text.isNotEmpty) {
-                            final quantity = int.tryParse(quantityController.text) ?? 0;
-                            final price = double.tryParse(priceController.text) ?? 0;
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (selectedStock != null &&
+                      quantityController.text.isNotEmpty &&
+                      priceController.text.isNotEmpty) {
+                    final quantity = int.tryParse(quantityController.text) ?? 0;
+                    final price = double.tryParse(priceController.text) ?? 0;
 
-                            if (quantity > 0 && price > 0) {
-                              setState(() {
-                                _orderItems.add(OrderItem(
-                                  stock: selectedStock!,
-                                  quantity: quantity,
-                                  unitPrice: price,
-                                ));
-                              });
-                              Navigator.of(context).pop();
-                            }
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                    if (quantity > 0 && price > 0) {
+                      Navigator.of(dialogCtx).pop();
+                      setState(() {
+                        _orderItems.add(OrderItem(
+                          stock: selectedStock!,
+                          quantity: quantity,
+                          unitPrice: price,
+                        ));
+                      });
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please enter valid quantity and price'),
+                          backgroundColor: Colors.red,
                         ),
-                        child: const Text('Add'),
+                      );
+                    }
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please fill all fields'),
+                        backgroundColor: Colors.red,
                       ),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _removeOrderItem(int index) {
-    setState(() {
-      _orderItems.removeAt(index);
+                    );
+                  }
+                },
+                child: const Text('Add'),
+              ),
+            ],
+          );
+        },
+      );
     });
-  }
+}
 
-  double get _totalAmount {
-    return _orderItems.fold(0, (sum, item) => sum + item.totalPrice);
-  }
+
+  void _removeOrderItem(int index) => setState(() => _orderItems.removeAt(index));
+
+  double get _totalAmount =>
+      _orderItems.fold(0.0, (sum, item) => sum + item.totalPrice);
 
   Future<void> _submitOrder() async {
-    if (_formKey.currentState!.validate() && _selectedCustomer != null && _orderItems.isNotEmpty) {
-      setState(() {
-        _isSubmitting = true;
-      });
-
-      // Simulate order submission
+    if (_formKey.currentState!.validate() &&
+        _selectedCustomer != null &&
+        _orderItems.isNotEmpty) {
+      setState(() => _isSubmitting = true);
       await Future.delayed(const Duration(seconds: 2));
-
-      if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Sales order placed successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        // Reset form
-        setState(() {
-          _selectedCustomer = null;
-          _orderItems.clear();
-        });
-      }
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sales order placed successfully'), backgroundColor: Colors.green),
+      );
+      setState(() {
+        _selectedCustomer = null;
+        _orderItems.clear();
+      });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -224,9 +276,7 @@ class _SalesOrderPageState extends State<SalesOrderPage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
@@ -240,118 +290,102 @@ class _SalesOrderPageState extends State<SalesOrderPage> {
           key: _formKey,
           child: Column(
             children: [
-              // Customer Selection
-              Container(
-                padding: const EdgeInsets.all(16),
-                color: Colors.grey[50],
+              // Top section (Customer)
+              Padding(
+                padding: EdgeInsets.all(context.basePad),
                 child: DropdownButtonFormField<Customer>(
                   initialValue: _selectedCustomer,
-                  decoration: const InputDecoration(
+                  isExpanded: true,
+                  decoration: InputDecoration(
                     labelText: 'Select Customer *',
-                    border: OutlineInputBorder(),
+                    labelStyle: TextStyle(fontSize: context.bodySize),
+                    border: const OutlineInputBorder(),
                     filled: true,
                     fillColor: Colors.white,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: context.fieldPadH, vertical: context.fieldPadV),
                   ),
-                  items: _customers.map((customer) {
+                  items: _customers.map((c) {
                     return DropdownMenuItem(
-                      value: customer,
+                      value: c,
                       child: Text(
-                        '${customer.name} (${customer.areaName})',
+                        '${c.name} (${c.areaName})',
                         overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: context.bodySize),
                       ),
                     );
                   }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedCustomer = value;
-                    });
-                  },
-                  validator: (value) {
-                    if (value == null) {
-                      return 'Please select a customer';
-                    }
-                    return null;
-                  },
+                  onChanged: (v) => setState(() => _selectedCustomer = v),
+                  validator: (v) => v == null ? 'Please select a customer' : null,
                 ),
               ),
-              // Order Items Section
-              Expanded(
-                child: Column(
+
+              // Header row (Order Items + Add)
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: context.basePad)
+                    .copyWith(bottom: context.basePad * 0.5),
+                child: Row(
                   children: [
-                    // Header with responsive layout
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Order Items',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            onPressed: _addOrderItem,
-                            icon: const Icon(Icons.add, size: 18),
-                            label: const Text(
-                              'Add',
-                              style: TextStyle(fontSize: 14),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              minimumSize: const Size(0, 36),
-                            ),
-                          ),
-                        ],
+                    Expanded(
+                      child: Text(
+                        'Order Items',
+                        style: TextStyle(
+                          fontSize: context.titleSize,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                    // Items List with proper constraints
-                    Expanded(
-                      child: _orderItems.isEmpty
-                          ? const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16),
-                                child: Text(
-                                  'No products added yet\nTap "Add" to start',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ),
-                            )
-                          : ListView.builder(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              itemCount: _orderItems.length,
-                              itemBuilder: (context, index) {
-                                final item = _orderItems[index];
-                                return _buildOrderItemCard(item, index);
-                              },
-                            ),
+                    ElevatedButton.icon(
+                      onPressed: _addOrderItem,
+                      icon: const Icon(Icons.add, size: 16),
+                      style: ElevatedButton.styleFrom(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: context.basePad, vertical: context.basePad * 0.5),
+                        minimumSize: const Size(0, 36),
+                      ),
+                      label: Text('Add', style: TextStyle(fontSize: context.labelSize)),
                     ),
                   ],
                 ),
               ),
-              // Total and Submit - Fixed bottom section
+
+              // List (fills remaining space, always scrollable if needed)
+              Expanded(
+                child: _orderItems.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(context.basePad),
+                          child: Text(
+                            'No products added yet\nTap "Add" to start',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: context.bodySize, color: Colors.grey),
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: EdgeInsets.symmetric(horizontal: context.basePad),
+                        itemCount: _orderItems.length,
+                        itemBuilder: (c, i) => _buildOrderItemCard(context, _orderItems[i], i),
+                      ),
+              ),
+
+              // Bottom total + submit (fixed)
               Container(
+                width: double.infinity,
                 padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  16 + MediaQuery.of(context).padding.bottom,
+                  context.basePad,
+                  context.basePad * 0.75,
+                  context.basePad,
+                  context.basePad + MediaQuery.of(context).padding.bottom,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.grey[50],
                   border: Border(top: BorderSide(color: Colors.grey[300]!)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 4,
-                      offset: const Offset(0, -2),
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 2,
+                      offset: const Offset(0, -1),
                     ),
                   ],
                 ),
@@ -361,57 +395,43 @@ class _SalesOrderPageState extends State<SalesOrderPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Flexible(
-                          child: Text(
-                            'Total Amount:',
+                        Text('Total Amount:',
                             style: TextStyle(
-                              fontSize: 18,
+                              fontSize: context.titleSize,
                               fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        Flexible(
-                          child: Text(
-                            '₹${_totalAmount.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                            )),
+                        Text(
+                          '₹${_totalAmount.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: context.titleSize,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: context.basePad * 0.75),
                     SizedBox(
                       width: double.infinity,
-                      height: 48,
+                      height: context.actionBtnH,
                       child: ElevatedButton(
                         onPressed: _isSubmitting ? null : _submitOrder,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(context.corner),
                           ),
                         ),
                         child: _isSubmitting
                             ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : const Text(
-                                'Place Order',
+                                width: 18, height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)))
+                            : Text('Place Order',
                                 style: TextStyle(
-                                  fontSize: 16,
+                                  fontSize: context.r(14, largePhone: 15, tablet: 16),
                                   fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                                )),
                       ),
                     ),
                   ],
@@ -424,63 +444,51 @@ class _SalesOrderPageState extends State<SalesOrderPage> {
     );
   }
 
-  Widget _buildOrderItemCard(OrderItem item, int index) {
+  Widget _buildOrderItemCard(BuildContext context, OrderItem item, int index) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: EdgeInsets.only(bottom: context.basePad * 0.5),
+      elevation: 1,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.all(context.basePad * 0.75),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Product name and delete button
+            // Name + delete
             Row(
               children: [
                 Expanded(
                   child: Text(
                     item.stock.productName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      fontSize: 16,
+                      fontSize: context.r(14, largePhone: 15, tablet: 16),
                     ),
                     overflow: TextOverflow.ellipsis,
-                    maxLines: 2,
+                    maxLines: 1,
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                  icon: const Icon(Icons.delete, color: Colors.red, size: 18),
                   onPressed: () => _removeOrderItem(index),
-                  padding: const EdgeInsets.all(4),
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
+                  padding: const EdgeInsets.all(2),
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            // Quantity, unit price, and total in responsive layout
+            SizedBox(height: context.basePad * 0.5),
+            // Qty / Unit / Total
             Row(
               children: [
                 Expanded(
                   flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Wrap(
+                    spacing: context.basePad * 0.75,
+                    runSpacing: context.basePad * 0.25,
                     children: [
-                      Text(
-                        'Qty: ${item.quantity}',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Unit: ₹${item.unitPrice.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 14,
-                        ),
-                      ),
+                      Text('Qty: ${item.quantity}',
+                          style: TextStyle(color: Colors.grey[600], fontSize: context.labelSize)),
+                      Text('Unit: ₹${item.unitPrice.toStringAsFixed(2)}',
+                          style: TextStyle(color: Colors.grey[600], fontSize: context.labelSize)),
                     ],
                   ),
                 ),
@@ -489,18 +497,13 @@ class _SalesOrderPageState extends State<SalesOrderPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      const Text(
-                        'Total',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                      ),
+                      Text('Total',
+                          style: TextStyle(fontSize: context.r(10, largePhone: 11, tablet: 12), color: Colors.grey)),
                       Text(
                         '₹${item.totalPrice.toStringAsFixed(2)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: context.r(14, largePhone: 15, tablet: 16),
                           color: Colors.green,
                         ),
                         overflow: TextOverflow.ellipsis,

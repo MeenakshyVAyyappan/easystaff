@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:eazystaff/models/customer.dart';
 import 'package:eazystaff/services/customer_service.dart';
+import 'package:eazystaff/services/pdf_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
 
@@ -13,10 +14,9 @@ class CollectionPage extends StatefulWidget {
 
 class _CollectionPageState extends State<CollectionPage> {
   DateTime _selectedFromDate = DateTime.now().subtract(
-    const Duration(days: 30),
+    const Duration(days: 365),  // Changed from 30 to 365 days for wider range
   );
   DateTime _selectedToDate = DateTime.now();
-  List<CollectionEntry> _collections = [];
   List<CollectionEntry> _filteredCollections = [];
   bool _isLoading = true;
 
@@ -32,10 +32,15 @@ class _CollectionPageState extends State<CollectionPage> {
     });
 
     try {
-      final collections = await CustomerService.getCollections();
+      // Pass the selected date range to the API call
+      final collections = await CustomerService.getCollections(
+        startDate: _selectedFromDate,
+        endDate: _selectedToDate,
+      );
       setState(() {
-        _collections = collections;
-        _filteredCollections = _filterCollectionsByDate(collections);
+        // Since we're getting filtered data from API based on date range,
+        // we can use the collections directly
+        _filteredCollections = collections;
         _isLoading = false;
       });
     } catch (e) {
@@ -50,18 +55,7 @@ class _CollectionPageState extends State<CollectionPage> {
     }
   }
 
-  List<CollectionEntry> _filterCollectionsByDate(
-    List<CollectionEntry> collections,
-  ) {
-    return collections.where((collection) {
-      return collection.date.isAfter(
-            _selectedFromDate.subtract(const Duration(days: 1)),
-          ) &&
-          collection.date.isBefore(
-            _selectedToDate.add(const Duration(days: 1)),
-          );
-    }).toList();
-  }
+
 
   Future<void> _selectDate(BuildContext context, bool isFromDate) async {
     final DateTime? picked = await showDatePicker(
@@ -78,12 +72,56 @@ class _CollectionPageState extends State<CollectionPage> {
         } else {
           _selectedToDate = picked;
         }
-        _filteredCollections = _filterCollectionsByDate(_collections);
       });
+
+      // Reload collections from API with new date range
+      await _loadCollections();
     }
   }
 
   void _shareCollections() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Share Collections Report'),
+          content: const Text('Choose how you want to share the collections report:'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _shareCollectionsAsText();
+              },
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.text_fields),
+                  SizedBox(width: 8),
+                  Text('Text'),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _shareCollectionsAsPdf();
+              },
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.picture_as_pdf),
+                  SizedBox(width: 8),
+                  Text('PDF'),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _shareCollectionsAsText() {
     final dateFormat = DateFormat('dd/MM/yyyy');
     final totalAmount = _filteredCollections.fold<double>(
       0,
@@ -99,6 +137,9 @@ class _CollectionPageState extends State<CollectionPage> {
     content.writeln('');
 
     for (final collection in _filteredCollections) {
+      if (collection.customerName?.isNotEmpty == true) {
+        content.writeln('Company: ${collection.customerName}');
+      }
       content.writeln('Date: ${dateFormat.format(collection.date)}');
       content.writeln('Amount: ₹${collection.amount.toStringAsFixed(2)}');
       content.writeln('Type: ${collection.type.toString().split('.').last}');
@@ -111,7 +152,40 @@ class _CollectionPageState extends State<CollectionPage> {
       content.writeln('---');
     }
 
-    Share.share(content.toString(), subject: 'Collection Report');
+    Share.share(content.toString());
+  }
+
+  Future<void> _shareCollectionsAsPdf() async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      // Generate and share PDF
+      await PdfService.generateAndShareCollectionsReport(
+        collections: _filteredCollections,
+        fromDate: _selectedFromDate,
+        toDate: _selectedToDate,
+      );
+
+      // Hide loading indicator
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      // Hide loading indicator
+      if (mounted) Navigator.pop(context);
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating PDF: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -310,6 +384,11 @@ class _CollectionPageState extends State<CollectionPage> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (collection.customerName?.isNotEmpty == true)
+              Text(
+                'Company: ${collection.customerName}',
+                style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.blue),
+              ),
             Text('Date: ${dateFormat.format(collection.date)}'),
             Text(
               'Type: ${collection.type.toString().split('.').last.toUpperCase()}',

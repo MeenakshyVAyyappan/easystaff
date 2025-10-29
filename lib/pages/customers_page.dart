@@ -323,7 +323,29 @@ class _CustomersPageState extends State<CustomersPage> {
                 subtitle: const Text('View transaction history'),
                 onTap: () {
                   Navigator.pop(context);
+
+                  // Validate customer ID before navigation
+                  if (customer.id.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Error: Customer ID is missing. Cannot load statement.'),
+                        backgroundColor: Colors.red,
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                    return;
+                  }
+
                   try {
+                    // Show loading indicator briefly
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Loading statement for ${customer.name}...'),
+                        backgroundColor: Colors.blue,
+                        duration: const Duration(seconds: 1),
+                      ),
+                    );
+
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -333,7 +355,11 @@ class _CustomersPageState extends State<CustomersPage> {
                     );
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error opening customer statement: $e')),
+                      SnackBar(
+                        content: Text('Error opening customer statement: ${e.toString().replaceAll('Exception: ', '')}'),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
                     );
                   }
                 },
@@ -344,7 +370,29 @@ class _CustomersPageState extends State<CustomersPage> {
                 subtitle: const Text('View outstanding invoices'),
                 onTap: () {
                   Navigator.pop(context);
+
+                  // Validate customer ID before navigation
+                  if (customer.id.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Error: Customer ID is missing. Cannot load credit age report.'),
+                        backgroundColor: Colors.red,
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                    return;
+                  }
+
                   try {
+                    // Show loading indicator briefly
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Loading credit age report for ${customer.name}...'),
+                        backgroundColor: Colors.blue,
+                        duration: const Duration(seconds: 1),
+                      ),
+                    );
+
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -354,7 +402,11 @@ class _CustomersPageState extends State<CustomersPage> {
                     );
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error opening credit age report: $e')),
+                      SnackBar(
+                        content: Text('Error opening credit age report: ${e.toString().replaceAll('Exception: ', '')}'),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
                     );
                   }
                 },

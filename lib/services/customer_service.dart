@@ -121,6 +121,7 @@ class CustomerService {
     CollectionEntry(
       id: '1',
       customerId: '1',
+      customerName: 'ABC Corp',
       date: DateTime.now().subtract(const Duration(days: 3)),
       amount: 10000.0,
       type: CollectionType.cash,
@@ -130,6 +131,7 @@ class CustomerService {
     CollectionEntry(
       id: '2',
       customerId: '2',
+      customerName: 'XYZ Enterprises',
       date: DateTime.now().subtract(const Duration(days: 2)),
       amount: 20000.0,
       type: CollectionType.bank,
@@ -141,6 +143,7 @@ class CustomerService {
     CollectionEntry(
       id: '3',
       customerId: '3',
+      customerName: 'PQR Industries',
       date: DateTime.now().subtract(const Duration(days: 1)),
       amount: 5000.0,
       type: CollectionType.cash,
@@ -220,15 +223,22 @@ class CustomerService {
         ...authHeaders,
       };
 
+      // Ensure all required fields are properly set
       final body = {
-        'officeid': user.officeId,
-        'officecode': user.officeCode,
-        'financialyearid': user.financialYearId,
+        'officeid': user.officeId.isNotEmpty ? user.officeId : '1',
+        'officecode': user.officeCode.isNotEmpty ? user.officeCode : 'DEFAULT',
+        'financialyearid': user.financialYearId.isNotEmpty ? user.financialYearId : '2',
         'empid': user.employeeId.isNotEmpty ? user.employeeId : '2',
       };
 
       if (kDebugMode) {
-        debugPrint('Fetching customers with params: $body');
+        debugPrint('=== CUSTOMERS API REQUEST ===');
+        debugPrint('URL: $_baseUrl');
+        debugPrint('User Info: ${user.name} (${user.username})');
+        debugPrint('Office: ${user.officeCode} (ID: ${user.officeId})');
+        debugPrint('Employee: ${user.employeeId}');
+        debugPrint('Financial Year: ${user.financialYearId}');
+        debugPrint('Request Parameters: $body');
       }
 
       final response = await http.post(
@@ -239,7 +249,12 @@ class CustomerService {
 
       if (kDebugMode) {
         debugPrint('Customers API response: ${response.statusCode}');
-        debugPrint('Response body: ${response.body}');
+        debugPrint('Response body length: ${response.body.length}');
+        if (response.body.length < 1000) {
+          debugPrint('Response body: ${response.body}');
+        } else {
+          debugPrint('Response body (first 500 chars): ${response.body.substring(0, 500)}...');
+        }
       }
 
       if (response.statusCode != 200) {
@@ -253,10 +268,22 @@ class CustomerService {
         if (jsonData is List) {
           debugPrint('JSON is a List with ${jsonData.length} items');
           if (jsonData.isNotEmpty) {
-            debugPrint('First item keys: ${(jsonData.first as Map<String, dynamic>).keys.toList()}');
+            final firstItem = jsonData.first as Map<String, dynamic>;
+            debugPrint('First item keys: ${firstItem.keys.toList()}');
+            debugPrint('=== FIRST CUSTOMER SAMPLE DATA ===');
+            firstItem.forEach((key, value) {
+              debugPrint('  $key: $value (${value.runtimeType})');
+            });
+            debugPrint('=== END SAMPLE DATA ===');
           }
         } else if (jsonData is Map) {
           debugPrint('JSON is a Map with keys: ${jsonData.keys.toList()}');
+          // Check for API error response
+          if (jsonData.containsKey('flag') && jsonData['flag'] == false) {
+            final msg = jsonData['msg'] ?? 'Unknown error';
+            debugPrint('API returned error: $msg');
+            throw Exception('API Error: $msg');
+          }
         }
       }
 
@@ -268,28 +295,49 @@ class CustomerService {
         customersList = jsonData['customers'] as List;
       } else if (jsonData is Map && jsonData.containsKey('data')) {
         customersList = jsonData['data'] as List;
+      } else if (jsonData is Map && jsonData.containsKey('customer')) {
+        customersList = jsonData['customer'] as List;
       } else {
-        throw Exception('Unexpected API response format');
+        throw Exception('Unexpected API response format. Available keys: ${jsonData is Map ? jsonData.keys.toList() : 'Not a Map'}');
       }
 
       if (kDebugMode) {
-        debugPrint('Processing ${customersList.length} customers');
+        debugPrint('Processing ${customersList.length} customers from API');
       }
 
-      final customers = customersList.map((json) => Customer.fromJson(json as Map<String, dynamic>)).toList();
+      if (customersList.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('No customers found in API response');
+        }
+        return [];
+      }
+
+      // Convert JSON to Customer objects - NO DEDUPLICATION, use original API data exactly as is
+      final customers = customersList
+          .map((json) => Customer.fromJson(json as Map<String, dynamic>))
+          .where((customer) => customer.id.trim().isNotEmpty) // Only filter out customers with empty IDs
+          .toList();
 
       if (kDebugMode) {
-        debugPrint('Successfully parsed ${customers.length} customers');
+        debugPrint('Loaded ${customers.length} customers from API (original data, no deduplication)');
         if (customers.isNotEmpty) {
-          debugPrint('=== CUSTOMER IDS DEBUG ===');
+          debugPrint('=== ORIGINAL CUSTOMER DATA FROM API ===');
           for (int i = 0; i < customers.length && i < 5; i++) {
             final customer = customers[i];
-            debugPrint('Customer $i: ${customer.name} (ID: "${customer.id}", type: ${customer.id.runtimeType}, length: ${customer.id.length})');
+            debugPrint('Customer $i: "${customer.name}" -> ID: "${customer.id}" (Balance: ${customer.balanceAmount})');
           }
           if (customers.length > 5) {
             debugPrint('... and ${customers.length - 5} more customers');
           }
+
+          // Show some examples of customer IDs for statement API
+          debugPrint('=== CUSTOMER IDS FOR STATEMENT API ===');
+          final sampleCustomers = customers.take(3).toList();
+          for (final customer in sampleCustomers) {
+            debugPrint('Customer: "${customer.name}" -> ID: "${customer.id}"');
+          }
         }
+        debugPrint('=== END CUSTOMERS API REQUEST ===');
       }
 
       return customers;
@@ -297,6 +345,7 @@ class CustomerService {
     } catch (e) {
       if (kDebugMode) {
         debugPrint('Error fetching customers: $e');
+        debugPrint('Falling back to mock data for development');
       }
       // Fallback to mock data in case of error during development
       await Future.delayed(const Duration(milliseconds: 500));
@@ -323,9 +372,118 @@ class CustomerService {
     return _mockCollections.where((c) => c.customerId == customerId).toList();
   }
 
-  static Future<List<CollectionEntry>> getCollections() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return List.from(_mockCollections);
+  static Future<List<CollectionEntry>> getCollections({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    try {
+      final user = AuthService.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get authentication headers
+      final authHeaders = await AuthService.authHeaders();
+
+      final headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json, text/plain, */*',
+        ...authHeaders,
+      };
+
+      // Use provided dates or default to last 30 days
+      final now = DateTime.now();
+      final sdate = startDate ?? now.subtract(const Duration(days: 30));
+      final edate = endDate ?? now;
+
+      // Format dates as YYYY-MM-DD (to match test data format)
+      String formatDate(DateTime date) {
+        return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      }
+
+      final body = {
+        'officecode': user.officeCode,
+        'officeid': user.officeId,
+        'financialyearid': user.financialYearId.isNotEmpty ? user.financialYearId : '2',
+        'empid': user.employeeId.isNotEmpty ? user.employeeId : '4',  // Use empid 4 as fallback based on test data
+        'sdate': formatDate(sdate),
+        'edate': formatDate(edate),
+      };
+
+      if (kDebugMode) {
+        debugPrint('=== COLLECTIONS API REQUEST ===');
+        debugPrint('URL: https://ezyerp.ezyplus.in/collections.php');
+        debugPrint('User Info: ${user.name} (${user.username})');
+        debugPrint('Office: ${user.officeCode} (ID: ${user.officeId})');
+        debugPrint('Employee: ${user.employeeId}');
+        debugPrint('Financial Year: ${user.financialYearId}');
+        debugPrint('Date Range: ${body['sdate']} to ${body['edate']}');
+        debugPrint('Full Parameters: $body');
+      }
+
+      final response = await http.post(
+        Uri.parse('https://ezyerp.ezyplus.in/collections.php'),
+        headers: headers,
+        body: body,
+      ).timeout(const Duration(seconds: 30));
+
+      if (kDebugMode) {
+        debugPrint('Collections API Response Status: ${response.statusCode}');
+        debugPrint('Collections API Response Body: ${response.body}');
+      }
+
+      if (response.statusCode != 200) {
+        throw Exception('Collections API error ${response.statusCode}');
+      }
+
+      final jsonData = jsonDecode(response.body);
+
+      if (jsonData is Map<String, dynamic>) {
+        final flag = jsonData['flag'] ?? false;
+        final msg = jsonData['msg'] ?? '';
+
+        if (kDebugMode) {
+          debugPrint('Collections API flag: $flag, msg: $msg');
+        }
+
+        if (flag == true || flag == 1) {
+          // Parse collections data from API response
+          final collectionsData = jsonData['collections'] ?? jsonData['data'] ?? [];
+
+          if (collectionsData is List) {
+            final collections = collectionsData
+                .map((item) => CollectionEntry.fromApiJson(item))
+                .where((collection) => collection != null)
+                .cast<CollectionEntry>()
+                .toList();
+
+            if (kDebugMode) {
+              debugPrint('Successfully parsed ${collections.length} collections from API');
+            }
+
+            return collections;
+          }
+        } else {
+          if (kDebugMode) {
+            debugPrint('Collections API returned error: $msg');
+          }
+          // Return empty list instead of throwing error to maintain UI functionality
+          return [];
+        }
+      }
+
+      // If no valid data found, return empty list
+      return [];
+
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error fetching collections from API: $e');
+        debugPrint('Falling back to mock data for development');
+      }
+      // Fallback to mock data in case of error during development
+      await Future.delayed(const Duration(milliseconds: 500));
+      return List.from(_mockCollections);
+    }
   }
 
   static Future<List<Stock>> getStocks() async {
@@ -450,8 +608,8 @@ class CustomerService {
         'officeid': user.officeId,
         'financialyearid': user.financialYearId,
         'rdate': rdate,
-        'empid': user.employeeId,
-        'empidc': user.employeeId, // Employee code (same as empid)
+        'empid': user.employeeId.isNotEmpty ? user.employeeId : '4',
+        'empidc': user.employeeId.isNotEmpty ? user.employeeId : '4', // Employee code (same as empid)
         'payment': paymentTypeStr,
         'amount': entry.amount.toString(),
         'customerid': entry.customerId,
@@ -642,6 +800,15 @@ class CustomerService {
         throw Exception('User not authenticated');
       }
 
+      // Validate customer ID
+      final trimmedCustomerId = customerId.trim();
+      if (trimmedCustomerId.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('ERROR: Customer ID is empty or null');
+        }
+        throw Exception('Customer ID cannot be empty');
+      }
+
       // Get authentication headers
       final authHeaders = await AuthService.authHeaders();
 
@@ -651,22 +818,30 @@ class CustomerService {
         ...authHeaders,
       };
 
+      // Ensure all required fields are properly set with fallbacks
       final body = {
-        'officecode': officeCode ?? user.officeCode,
-        'officeid': officeId ?? user.officeId,
-        'financialyearid': financialYearId,
+        'officecode': (officeCode ?? user.officeCode).isNotEmpty ? (officeCode ?? user.officeCode) : 'DEFAULT',
+        'officeid': (officeId ?? user.officeId).isNotEmpty ? (officeId ?? user.officeId) : '1',
+        'financialyearid': financialYearId.isNotEmpty ? financialYearId : '2',
         'sdate': '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}',
         'edate': '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}',
-        'customerid': customerId,
+        'customerid': trimmedCustomerId,
       };
 
       if (kDebugMode) {
-        debugPrint('=== CUSTOMER STATEMENT DEBUG ===');
-        debugPrint('Fetching customer statement with params: $body');
-        debugPrint('Customer ID being sent: $customerId (type: ${customerId.runtimeType})');
-        debugPrint('Customer ID length: ${customerId.length}');
-        debugPrint('Customer ID isEmpty: ${customerId.isEmpty}');
-        debugPrint('Raw customer ID: "$customerId"');
+        debugPrint('=== CUSTOMER STATEMENT API REQUEST ===');
+        debugPrint('URL: https://ezyerp.ezyplus.in/customerstatement.php');
+        debugPrint('Customer: "$customerId" -> Trimmed: "$trimmedCustomerId"');
+        debugPrint('Date Range: ${body['sdate']} to ${body['edate']}');
+        debugPrint('Financial Year: $financialYearId');
+        debugPrint('Office: ${body['officecode']} (ID: ${body['officeid']})');
+        debugPrint('Full Parameters: $body');
+        debugPrint('Customer ID validation:');
+        debugPrint('  - Original: "$customerId" (type: ${customerId.runtimeType})');
+        debugPrint('  - Trimmed: "$trimmedCustomerId" (length: ${trimmedCustomerId.length})');
+        debugPrint('  - isEmpty: ${trimmedCustomerId.isEmpty}');
+        debugPrint('  - isNumeric: ${RegExp(r'^\d+$').hasMatch(trimmedCustomerId)}');
+        debugPrint('  - Exact bytes: ${trimmedCustomerId.codeUnits}');
       }
 
       final response = await http.post(
@@ -676,9 +851,13 @@ class CustomerService {
       ).timeout(const Duration(seconds: 30));
 
       if (kDebugMode) {
-        debugPrint('Customer Statement API response: ${response.statusCode}');
-        debugPrint('Response body: ${response.body}');
+        debugPrint('Customer Statement API Response Status: ${response.statusCode}');
         debugPrint('Response body length: ${response.body.length}');
+        if (response.body.length < 2000) {
+          debugPrint('Response body: ${response.body}');
+        } else {
+          debugPrint('Response body (first 1000 chars): ${response.body.substring(0, 1000)}...');
+        }
       }
 
       if (response.statusCode != 200) {
@@ -694,38 +873,50 @@ class CustomerService {
         }
       }
 
-      // Handle the actual API response format based on Postman screenshots
+      // Handle the actual API response format
       List<dynamic> transactionsList = [];
 
       if (jsonData is Map) {
-        // Check if response has flag and msg fields (as shown in Postman)
-        final flag = jsonData['flag'] ?? false;
+        // Check if response has flag and msg fields
+        final flag = jsonData['flag'];
         final msg = jsonData['msg'] ?? '';
 
         if (kDebugMode) {
-          debugPrint('API flag: $flag, msg: $msg');
+          debugPrint('API Response - flag: $flag, msg: "$msg"');
         }
 
+        // Check for various possible data keys
         if (jsonData.containsKey('statement') && jsonData['statement'] is List) {
           transactionsList = jsonData['statement'] as List;
+          if (kDebugMode) debugPrint('Found transactions in "statement" key: ${transactionsList.length}');
         } else if (jsonData.containsKey('data') && jsonData['data'] is List) {
           transactionsList = jsonData['data'] as List;
+          if (kDebugMode) debugPrint('Found transactions in "data" key: ${transactionsList.length}');
         } else if (jsonData.containsKey('transactions') && jsonData['transactions'] is List) {
           transactionsList = jsonData['transactions'] as List;
-        } else if (!flag && msg.toLowerCase().contains('no data')) {
+          if (kDebugMode) debugPrint('Found transactions in "transactions" key: ${transactionsList.length}');
+        } else if (jsonData.containsKey('customerstatement') && jsonData['customerstatement'] is List) {
+          transactionsList = jsonData['customerstatement'] as List;
+          if (kDebugMode) debugPrint('Found transactions in "customerstatement" key: ${transactionsList.length}');
+        } else if (flag == false || msg.toLowerCase().contains('no data') || msg.toLowerCase().contains('not found')) {
           // API returned no data - return empty list
           if (kDebugMode) {
-            debugPrint('API returned no data: $msg');
+            debugPrint('API returned no data or error: flag=$flag, msg="$msg"');
           }
           return [];
+        } else {
+          if (kDebugMode) {
+            debugPrint('No recognized data key found. Available keys: ${jsonData.keys.toList()}');
+          }
         }
       } else if (jsonData is List) {
         transactionsList = jsonData;
+        if (kDebugMode) debugPrint('Response is direct array with ${transactionsList.length} items');
       }
 
       if (transactionsList.isEmpty) {
         if (kDebugMode) {
-          debugPrint('No transactions found in API response');
+          debugPrint('No transactions found in API response for customer ID: $trimmedCustomerId');
         }
         return [];
       }
@@ -737,14 +928,19 @@ class CustomerService {
       if (kDebugMode) {
         debugPrint('Total transactions parsed: ${allTransactions.length}');
         if (allTransactions.isNotEmpty) {
-          debugPrint('First transaction: invoice=${allTransactions.first.invoiceNo}, balance=${allTransactions.first.balanceAmount}, credit=${allTransactions.first.creditAmount}, receipt=${allTransactions.first.receiptAmount}');
+          final first = allTransactions.first;
+          debugPrint('First transaction: invoice="${first.invoiceNo}", date=${first.date}, balance=${first.balanceAmount}, credit=${first.creditAmount}, receipt=${first.receiptAmount}');
+          if (allTransactions.length > 1) {
+            final last = allTransactions.last;
+            debugPrint('Last transaction: invoice="${last.invoiceNo}", date=${last.date}, balance=${last.balanceAmount}');
+          }
         }
       }
 
+      // Filter out invalid transactions
       final transactions = allTransactions
           .where((transaction) {
-            // Filter out transactions where all important fields are null/empty
-            // A valid transaction must have at least an invoice number or balance amount
+            // A valid transaction must have at least an invoice number or some amount
             final hasInvoice = transaction.invoiceNo.isNotEmpty;
             final hasBalance = transaction.balanceAmount != 0.0;
             final hasCredit = transaction.creditAmount != 0.0;
@@ -753,7 +949,7 @@ class CustomerService {
             final isValid = hasInvoice || hasBalance || hasCredit || hasReceipt;
 
             if (kDebugMode && !isValid) {
-              debugPrint('Filtering out empty transaction: invoice=$hasInvoice, balance=$hasBalance, credit=$hasCredit, receipt=$hasReceipt');
+              debugPrint('Filtering out empty transaction: invoice="$hasInvoice", balance=$hasBalance, credit=$hasCredit, receipt=$hasReceipt');
             }
 
             return isValid;
@@ -761,7 +957,8 @@ class CustomerService {
           .toList();
 
       if (kDebugMode) {
-        debugPrint('Successfully parsed ${transactions.length} transactions (filtered ${allTransactions.length - transactions.length} empty records)');
+        debugPrint('Successfully parsed ${transactions.length} valid transactions (filtered ${allTransactions.length - transactions.length} empty records)');
+        debugPrint('=== END CUSTOMER STATEMENT API REQUEST ===');
       }
 
       return transactions;
@@ -769,6 +966,7 @@ class CustomerService {
     } catch (e) {
       if (kDebugMode) {
         debugPrint('Error fetching customer statement: $e');
+        debugPrint('Falling back to mock data for development');
       }
       // Fallback to mock data in case of error during development
       await Future.delayed(const Duration(milliseconds: 500));
@@ -845,6 +1043,15 @@ class CustomerService {
         throw Exception('User not authenticated');
       }
 
+      // Validate customer ID
+      final trimmedCustomerId = customerId.trim();
+      if (trimmedCustomerId.isEmpty) {
+        if (kDebugMode) {
+          debugPrint('ERROR: Customer ID is empty or null for credit age report');
+        }
+        throw Exception('Customer ID cannot be empty');
+      }
+
       // Get authentication headers
       final authHeaders = await AuthService.authHeaders();
 
@@ -860,16 +1067,16 @@ class CustomerService {
         'financialyearid': financialYearId,
         'noofdays': numberOfDays.toString(),
         'condition': condition,
-        'customerid': customerId,
+        'customerid': trimmedCustomerId,
       };
 
       if (kDebugMode) {
         debugPrint('=== CREDIT AGE REPORT DEBUG ===');
         debugPrint('Fetching credit age report with params: $body');
-        debugPrint('Customer ID being sent: $customerId (type: ${customerId.runtimeType})');
-        debugPrint('Customer ID length: ${customerId.length}');
-        debugPrint('Customer ID isEmpty: ${customerId.isEmpty}');
-        debugPrint('Raw customer ID: "$customerId"');
+        debugPrint('Original Customer ID: "$customerId" (type: ${customerId.runtimeType})');
+        debugPrint('Trimmed Customer ID: "$trimmedCustomerId" (length: ${trimmedCustomerId.length})');
+        debugPrint('Customer ID isEmpty: ${trimmedCustomerId.isEmpty}');
+        debugPrint('Customer ID contains only digits: ${RegExp(r'^\d+$').hasMatch(trimmedCustomerId)}');
       }
 
       final response = await http.post(

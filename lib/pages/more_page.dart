@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:eazystaff/services/auth_service.dart';
 import 'package:eazystaff/login.dart';
 import 'package:eazystaff/pages/stocks_page.dart';
 import 'package:eazystaff/pages/sales_order_page.dart';
 import 'package:eazystaff/pages/profile_page.dart';
+import 'package:eazystaff/debug_customer_data.dart';
 
 class MorePage extends StatelessWidget {
   const MorePage({super.key});
@@ -190,6 +192,22 @@ class MorePage extends StatelessWidget {
               isDestructive: true,
             ),
           ]),
+
+          // Debug section (only in debug mode)
+          if (kDebugMode)
+            _buildMenuSection('Debug', [
+              _buildMenuItem(
+                icon: Icons.bug_report,
+                title: 'Debug Customer Data',
+                subtitle: 'Test customer API and data',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const DebugCustomerDataPage()),
+                  );
+                },
+              ),
+            ]),
         ],
       ),
     );

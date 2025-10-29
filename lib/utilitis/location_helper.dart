@@ -104,6 +104,25 @@ class LocationHelper {
     }
   }
 
+  /// Get coordinates from address (geocoding)
+  static Future<LocationData?> getCoordinatesFromAddress(String address) async {
+    try {
+      final locations = await locationFromAddress(address);
+      if (locations.isEmpty) return null;
+
+      final location = locations.first;
+      return LocationData(
+        latitude: location.latitude,
+        longitude: location.longitude,
+        address: address,
+        timestamp: DateTime.now(),
+        isManual: true,
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
   /// Get current location with full data
   static Future<LocationData?> getCurrentLocationData() async {
     final pos = await getCurrentPosition();

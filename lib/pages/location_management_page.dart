@@ -17,7 +17,11 @@ class _LocationManagementPageState extends State<LocationManagementPage> {
   bool _isLoading = false;
   bool _isLocationEnabled = false;
   Set<Marker> _markers = {};
-  
+
+  // Manual address entry
+  final TextEditingController _addressController = TextEditingController();
+  bool _showAddressInput = false;
+
   // Default location (India center)
   static const LatLng _defaultLocation = LatLng(20.5937, 78.9629);
 
@@ -179,20 +183,92 @@ class _LocationManagementPageState extends State<LocationManagementPage> {
     }
   }
 
+  Future<void> _searchAddress() async {
+    final address = _addressController.text.trim();
+    if (address.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter an address'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final coordinates = await LocationHelper.getCoordinatesFromAddress(address);
+      if (coordinates != null) {
+        final manualLocation = LocationHelper.createManualLocation(
+          latitude: coordinates.latitude,
+          longitude: coordinates.longitude,
+          address: address,
+        );
+
+        setState(() {
+          _selectedLocation = manualLocation;
+          _showAddressInput = false;
+        });
+
+        _updateMarker(manualLocation);
+        _animateToLocation(manualLocation);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Address found: $address'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Address not found. Please try a different address.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error searching address: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _toggleAddressInput() {
+    setState(() {
+      _showAddressInput = !_showAddressInput;
+      if (!_showAddressInput) {
+        _addressController.clear();
+      }
+    });
+  }
+
   Future<void> _saveLocation() async {
     if (_selectedLocation == null) return;
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       await LocationHelper.saveLocationData(_selectedLocation!);
       await AuthService.saveLocation(_selectedLocation!.address);
-      
+
       setState(() {
         _currentLocation = _selectedLocation;
         _isLocationEnabled = true;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -217,6 +293,12 @@ class _LocationManagementPageState extends State<LocationManagementPage> {
   }
 
   @override
+  void dispose() {
+    _addressController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -224,6 +306,11 @@ class _LocationManagementPageState extends State<LocationManagementPage> {
         backgroundColor: Colors.orange.shade400,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            onPressed: _toggleAddressInput,
+            icon: Icon(_showAddressInput ? Icons.close : Icons.search),
+            tooltip: _showAddressInput ? 'Close Search' : 'Search Address',
+          ),
           if (_selectedLocation != null)
             IconButton(
               onPressed: _isLoading ? null : _saveLocation,
@@ -243,7 +330,7 @@ class _LocationManagementPageState extends State<LocationManagementPage> {
               }
             },
             initialCameraPosition: CameraPosition(
-              target: _currentLocation != null 
+              target: _currentLocation != null
                 ? LatLng(_currentLocation!.latitude, _currentLocation!.longitude)
                 : _defaultLocation,
               zoom: _currentLocation != null ? 16.0 : 5.0,
@@ -255,7 +342,16 @@ class _LocationManagementPageState extends State<LocationManagementPage> {
             zoomControlsEnabled: true,
             mapToolbarEnabled: false,
           ),
-          
+
+          // Address search input
+          if (_showAddressInput)
+            Positioned(
+              top: 16,
+              left: 16,
+              right: 16,
+              child: _buildAddressSearchCard(),
+            ),
+
           // Loading overlay
           if (_isLoading)
             Container(
@@ -264,7 +360,7 @@ class _LocationManagementPageState extends State<LocationManagementPage> {
                 child: CircularProgressIndicator(),
               ),
             ),
-          
+
           // Bottom info panel
           Positioned(
             bottom: 0,
@@ -277,8 +373,74 @@ class _LocationManagementPageState extends State<LocationManagementPage> {
       floatingActionButton: FloatingActionButton(
         onPressed: _isLoading ? null : _getCurrentLocation,
         backgroundColor: Colors.orange.shade400,
-        child: const Icon(Icons.my_location, color: Colors.white),
         tooltip: 'Get Current Location',
+        child: const Icon(Icons.my_location, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildAddressSearchCard() {
+    return Card(
+      elevation: 8,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.search, color: Colors.orange),
+                const SizedBox(width: 8),
+                const Text(
+                  'Search Address',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _addressController,
+              decoration: const InputDecoration(
+                hintText: 'Enter address (e.g., "123 Main St, City, State")',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.location_on),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              onSubmitted: (_) => _searchAddress(),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isLoading ? null : _searchAddress,
+                    icon: const Icon(Icons.search),
+                    label: const Text('Search'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange.shade400,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  onPressed: () {
+                    _addressController.clear();
+                    _toggleAddressInput();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey.shade300,
+                    foregroundColor: Colors.black87,
+                  ),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -318,7 +480,7 @@ class _LocationManagementPageState extends State<LocationManagementPage> {
               ),
             ],
           ),
-          
+
           if (_selectedLocation != null) ...[
             const SizedBox(height: 12),
             Text(
@@ -339,11 +501,13 @@ class _LocationManagementPageState extends State<LocationManagementPage> {
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
-          
+
           const SizedBox(height: 16),
-          const Text(
-            'Tap on the map to set a manual location or use the location button to get your current position.',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
+          Text(
+            _showAddressInput
+              ? 'Enter an address above or tap on the map to set a location.'
+              : 'Tap the search icon to enter an address, tap on the map to set a manual location, or use the location button to get your current position.',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
           ),
         ],
       ),

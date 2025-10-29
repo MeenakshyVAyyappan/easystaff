@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class Customer {
   final String id;
   final String name;
@@ -111,8 +113,43 @@ class Customer {
       return numbers.toList();
     }
 
+    if (kDebugMode) {
+      debugPrint('=== CUSTOMER JSON FIELDS ===');
+      debugPrint('Available fields: ${json.keys.toList()}');
+      json.forEach((key, value) {
+        if (key.toLowerCase().contains('id') || key.toLowerCase().contains('customer')) {
+          debugPrint('  $key: $value');
+        }
+      });
+    }
+
+    // Extract customer ID - try the most common field names from ERP systems
+    // Based on your API, let's check all possible ID fields
+    // IMPORTANT: customerid is prioritized first as it returns actual transaction data
+    final extractedId = _getString([
+      'customerid',          // Primary ID that returns transaction data
+      'customer_id',
+      'custid',              // Short form
+      'customerId',          // CamelCase
+      'customeraccountid',   // Secondary ID (may not have transaction data)
+      'customer_account_id',
+      'accountid',           // Account ID
+      'id',                  // Generic ID
+    ]).trim();
+
+    final finalId = extractedId;
+
+    if (kDebugMode) {
+      final customerName = _getString(['name', 'customer_name', 'custname', 'customerName', 'party_name']);
+      if (finalId.isEmpty) {
+        debugPrint('WARNING: Customer "$customerName" has empty ID. Available JSON keys: ${json.keys.toList()}');
+      } else {
+        debugPrint('Customer "$customerName" -> ID: "$finalId"');
+      }
+    }
+
     return Customer(
-      id: _getString(['id', 'customer_id', 'custid', 'customerId', 'customeraccountid']),
+      id: finalId,
       name: _getString(['name', 'customer_name', 'custname', 'customerName', 'party_name']),
       areaName: _getString(['areaName', 'area_name', 'area', 'location', 'region', 'areas']),
       balanceAmount: _getDouble(['balanceAmount', 'balance_amount', 'balance', 'outstanding', 'due_amount', 'curbbalance', 'currbalance']),
@@ -308,6 +345,7 @@ enum TransactionType {
 class CollectionEntry {
   final String id;
   final String customerId;
+  final String? customerName;
   final DateTime date;
   final double amount;
   final CollectionType type;
@@ -319,6 +357,7 @@ class CollectionEntry {
   CollectionEntry({
     required this.id,
     required this.customerId,
+    this.customerName,
     required this.date,
     required this.amount,
     required this.type,
@@ -332,6 +371,7 @@ class CollectionEntry {
     return CollectionEntry(
       id: json['id'] ?? '',
       customerId: json['customerId'] ?? '',
+      customerName: json['customerName'],
       date: DateTime.parse(json['date']),
       amount: (json['amount'] ?? 0).toDouble(),
       type: CollectionType.values.firstWhere(
@@ -346,6 +386,157 @@ class CollectionEntry {
       chequeDate: json['chequeDate'] != null ? DateTime.parse(json['chequeDate']) : null,
       remarks: json['remarks'],
     );
+  }
+
+  /// Factory constructor for API response data
+  static CollectionEntry? fromApiJson(Map<String, dynamic> json) {
+    try {
+      // Debug logging to see what fields we're getting
+      if (kDebugMode) {
+        debugPrint('=== PARSING COLLECTION ENTRY ===');
+        debugPrint('Raw JSON: $json');
+      }
+      // Helper function to safely get string values
+      String getString(List<String> keys, [String fallback = '']) {
+        for (final key in keys) {
+          if (json.containsKey(key) && json[key] != null) {
+            final value = json[key].toString().trim();
+            if (value.isNotEmpty) return value;
+          }
+        }
+        return fallback;
+      }
+
+      // Helper function to safely get double values
+      double getDouble(List<String> keys, [double fallback = 0.0]) {
+        for (final key in keys) {
+          if (json.containsKey(key) && json[key] != null) {
+            try {
+              return double.parse(json[key].toString());
+            } catch (e) {
+              continue;
+            }
+          }
+        }
+        return fallback;
+      }
+
+      // Helper function to parse date from various formats
+      DateTime parseDate(List<String> keys, [DateTime? fallback]) {
+        for (final key in keys) {
+          if (json.containsKey(key) && json[key] != null) {
+            try {
+              final dateStr = json[key].toString().trim();
+              if (dateStr.isEmpty) continue;
+
+              // Try different date formats
+              if (dateStr.contains('-')) {
+                // Handle yyyy-MM-dd or dd-MM-yyyy formats
+                final parts = dateStr.split('-');
+                if (parts.length == 3) {
+                  if (parts[0].length == 4) {
+                    // yyyy-MM-dd format
+                    return DateTime.parse(dateStr);
+                  } else {
+                    // dd-MM-yyyy format
+                    return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+                  }
+                }
+              } else if (dateStr.contains('/')) {
+                // Handle DD/MM/YYYY format
+                final parts = dateStr.split('/');
+                if (parts.length == 3) {
+                  return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+                }
+              } else {
+                // Try parsing as ISO string
+                return DateTime.parse(dateStr);
+              }
+            } catch (e) {
+              continue;
+            }
+          }
+        }
+        return fallback ?? DateTime.now();
+      }
+
+      // Extract basic information
+      final id = getString(['id', 'receipt_id', 'collection_id', 'receiptid'], DateTime.now().millisecondsSinceEpoch.toString());
+      final customerId = getString(['customer_id', 'customerid', 'custid'], '');
+      final customerName = getString(['customer_name', 'customername', 'name', 'account_name', 'company_name'], '');
+      final amount = getDouble([
+        'amount', 'collection_amount', 'receipt_amount', 'receiptamt', 'amt',
+        'total_amount', 'payment_amount', 'receipt_amt', 'collection_amt',
+        'paid_amount', 'pay_amount', 'value', 'total', 'sum', 'money'
+      ]);
+      final date = parseDate(['date', 'receipt_date', 'collection_date', 'receiptdate', 'rdate']);
+
+      // Determine collection type based on payment method
+      final paymentMethod = getString(['payment', 'payment_type', 'paymenttype', 'payment_method'], 'cash').toLowerCase();
+      final CollectionType collectionType;
+      final PaymentType paymentType;
+
+      if (paymentMethod.contains('cash')) {
+        collectionType = CollectionType.cash;
+        paymentType = PaymentType.cash;
+      } else if (paymentMethod.contains('cheque') || paymentMethod.contains('check')) {
+        collectionType = CollectionType.bank;
+        paymentType = PaymentType.cheque;
+      } else if (paymentMethod.contains('bank') || paymentMethod.contains('transfer') || paymentMethod.contains('online')) {
+        collectionType = CollectionType.bank;
+        paymentType = PaymentType.online;
+      } else {
+        collectionType = CollectionType.cash;
+        paymentType = PaymentType.cash;
+      }
+
+      // Extract optional fields
+      final chequeNo = getString(['cheque_no', 'chequeno', 'cheque_number', 'check_no']);
+      final chequeDate = json.containsKey('cheque_date') || json.containsKey('chequedate')
+          ? parseDate(['cheque_date', 'chequedate', 'check_date'])
+          : null;
+      final remarks = getString(['remarks', 'notes', 'description', 'comment']);
+
+      // Debug logging to see extracted values
+      if (kDebugMode) {
+        debugPrint('Extracted values:');
+        debugPrint('  id: $id');
+        debugPrint('  customerId: $customerId');
+        debugPrint('  amount: $amount');
+        debugPrint('  date: $date');
+        debugPrint('  paymentMethod: $paymentMethod');
+      }
+
+      // Validate required fields - temporarily disabled to debug
+      if (amount <= 0) {
+        if (kDebugMode) {
+          debugPrint('WARNING: Amount is $amount for entry, but continuing anyway');
+          debugPrint('Entry JSON: $json');
+        }
+        // Don't skip - let's see what we get
+        // return null; // Skip invalid entries
+      }
+
+      return CollectionEntry(
+        id: id,
+        customerId: customerId,
+        customerName: customerName.isNotEmpty ? customerName : null,
+        date: date,
+        amount: amount,
+        type: collectionType,
+        paymentType: paymentType,
+        chequeNo: chequeNo.isNotEmpty ? chequeNo : null,
+        chequeDate: chequeDate,
+        remarks: remarks.isNotEmpty ? remarks : null,
+      );
+    } catch (e) {
+      // Return null for invalid entries - they will be filtered out
+      if (kDebugMode) {
+        debugPrint('ERROR parsing collection entry: $e');
+        debugPrint('Failed JSON: $json');
+      }
+      return null;
+    }
   }
 
   Map<String, dynamic> toJson() {
